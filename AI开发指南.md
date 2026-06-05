@@ -195,7 +195,7 @@ cargo check
 | `verify_password` | `password: String` | `Result<bool, String>` | 验证密码 |
 | `has_password` | 无 | `Result<bool, String>` | 检查是否已设置密码 |
 | `get_settings` | 无 | `Result<AppSettings, String>` | 获取所有配置 |
-| `update_setting` | `key: String, value: bool` | `Result<(), String>` | 更新单个配置项 |
+| `update_setting` | `key: String, value: f64` | `Result<(), String>` | 更新单个配置项（bool 类型传 1.0/0.0） |
 | `start_lock_screen` | 无 | `Result<(), String>` | 启动锁屏窗口 |
 | `unlock_screen` | 无 | `Result<(), String>` | 隐藏锁屏窗口（解锁） |
 
@@ -267,6 +267,7 @@ tauri-plugin-xxx = "2"
 1. 在 `AppSettings` 结构体中添加字段
 2. 在 `Default` 实现中设置默认值
 3. 在 `update_setting` 中添加对应分支
+4. 如果该配置需要重启才能生效，在 `main.ts` 的 `NEED_RESTART_KEYS` 数组中添加 key
 
 ### 前端调用 Rust 命令
 

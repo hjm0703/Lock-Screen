@@ -19,9 +19,16 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.55);
+  background-color: rgba(0, 0, 0, var(--overlay-opacity, 0.55));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  transition: background-color 0.4s ease;
+}
+
+#lock-overlay.dimmed {
+  background-color: rgba(0, 0, 0, var(--dimmed-opacity, 0.85));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .lock-container {
@@ -34,6 +41,13 @@ html, body {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   min-width: 340px;
   animation: lockFadeIn 0.4s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.lock-container.hidden {
+  opacity: 0;
+  transform: scale(0.95);
+  pointer-events: none;
 }
 
 @keyframes lockFadeIn {
@@ -123,4 +137,32 @@ html, body {
   min-height: 18px;
   color: #ef4444;
   text-align: center;
+}
+
+.breathing-indicator {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #4f8ff7;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#lock-overlay.breathing .breathing-indicator {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.2;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateX(-50%) scale(1.6);
+  }
 }

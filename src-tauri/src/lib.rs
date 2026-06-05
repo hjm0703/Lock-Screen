@@ -13,6 +13,9 @@ use tauri::{
 struct AppSettings {
     password_hash: Option<String>,
     auto_hide: bool,
+    overlay_opacity: f64,
+    dimmed_opacity: f64,
+    breathing_light: bool,
 }
 
 impl Default for AppSettings {
@@ -20,6 +23,9 @@ impl Default for AppSettings {
         Self {
             password_hash: None,
             auto_hide: false,
+            overlay_opacity: 0.55,
+            dimmed_opacity: 0.85,
+            breathing_light: true,
         }
     }
 }
@@ -111,10 +117,13 @@ fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-fn update_setting(key: String, value: bool, state: State<AppState>) -> Result<(), String> {
+fn update_setting(key: String, value: f64, state: State<AppState>) -> Result<(), String> {
     let mut settings = state.settings.lock().unwrap();
     match key.as_str() {
-        "auto_hide" => settings.auto_hide = value,
+        "auto_hide" => settings.auto_hide = value > 0.5,
+        "overlay_opacity" => settings.overlay_opacity = value.clamp(0.0, 1.0),
+        "dimmed_opacity" => settings.dimmed_opacity = value.clamp(0.0, 1.0),
+        "breathing_light" => settings.breathing_light = value > 0.5,
         _ => return Err(format!("未知设置项: {}", key)),
     }
     save_settings(&settings)?;
@@ -122,8 +131,28 @@ fn update_setting(key: String, value: bool, state: State<AppState>) -> Result<()
 }
 
 #[tauri::command]
-fn start_lock_screen(app: tauri::AppHandle) -> Result<(), String> {
+fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+    let settings = state.settings.lock().unwrap();
+    let overlay_opacity = settings.overlay_opacity;
+    let dimmed_opacity = settings.dimmed_opacity;
+    let breathing_light = settings.breathing_light;
+    drop(settings);
+
+    let js = format!(
+        "window.__overlayOpacity = {}; window.__dimmedOpacity = {}; window.__breathingLight = {}; \
+         const el = document.getElementById('lock-overlay'); \
+         if (el) {{ \
+             el.style.setProperty('--overlay-opacity', '{}'); \
+             el.style.setProperty('--dimmed-opacity', '{}'); \
+             if (window.__breathingLight) {{ el.classList.add('breathing'); }} \
+             else {{ el.classList.remove('breathing'); }} \
+         }}",
+        overlay_opacity, dimmed_opacity, breathing_light,
+        overlay_opacity, dimmed_opacity
+    );
+
     if let Some(window) = app.get_webview_window("lock") {
+        let _ = window.eval(&js);
         let _ = window.show();
         let _ = window.set_focus();
         return Ok(());
@@ -148,6 +177,8 @@ fn start_lock_screen(app: tauri::AppHandle) -> Result<(), String> {
         .visible(true)
         .build()
         .map_err(|e| format!("创建锁屏窗口失败: {}", e))?;
+
+    let _ = window.eval(&js);
 
     Ok(())
 }

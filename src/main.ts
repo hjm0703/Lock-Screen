@@ -113,17 +113,58 @@ async function loadSettings(): Promise<void> {
     const result = await invoke("get_settings");
     const settings = result as Record<string, unknown>;
     const autoHideEl = document.getElementById("setting-auto-hide") as HTMLInputElement;
+    const overlayEl = document.getElementById("setting-overlay-opacity") as HTMLInputElement;
+    const dimmedEl = document.getElementById("setting-dimmed-opacity") as HTMLInputElement;
+    const overlayValEl = document.getElementById("value-overlay-opacity");
+    const dimmedValEl = document.getElementById("value-dimmed-opacity");
+    const breathingEl = document.getElementById("setting-breathing-light") as HTMLInputElement;
 
     if (autoHideEl) autoHideEl.checked = Boolean(settings.auto_hide);
+    if (overlayEl) {
+      const v = Math.round(((settings.overlay_opacity as number) ?? 0.55) * 100);
+      overlayEl.value = String(v);
+      if (overlayValEl) overlayValEl.textContent = `${v}%`;
+    }
+    if (dimmedEl) {
+      const v = Math.round(((settings.dimmed_opacity as number) ?? 0.85) * 100);
+      dimmedEl.value = String(v);
+      if (dimmedValEl) dimmedValEl.textContent = `${v}%`;
+    }
+    if (breathingEl) breathingEl.checked = Boolean(settings.breathing_light);
   } catch {
     // ignore load errors
   }
 }
 
+const NEED_RESTART_KEYS = ["overlay_opacity", "dimmed_opacity", "breathing_light"];
+
+function showRestartBanner(): void {
+  const banner = document.getElementById("restart-banner");
+  if (banner) banner.classList.add("active");
+}
+
 function handleToggleSetting(key: string, checked: boolean): void {
-  invoke("update_setting", { key, value: checked }).catch(() => {
-    // ignore save errors
-  });
+  invoke("update_setting", { key, value: checked ? 1.0 : 0.0 })
+    .then(() => {
+      if (NEED_RESTART_KEYS.includes(key)) {
+        showRestartBanner();
+      }
+    })
+    .catch(() => {
+      // ignore save errors
+    });
+}
+
+function handleSliderChange(key: string, value: number): void {
+  invoke("update_setting", { key, value: value / 100 })
+    .then(() => {
+      if (NEED_RESTART_KEYS.includes(key)) {
+        showRestartBanner();
+      }
+    })
+    .catch(() => {
+      // ignore save errors
+    });
 }
 
 async function updateLockPage(): Promise<void> {
@@ -223,6 +264,33 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const breathingEl = document.getElementById("setting-breathing-light");
+  if (breathingEl) {
+    breathingEl.addEventListener("change", (e) => {
+      handleToggleSetting("breathing_light", (e.target as HTMLInputElement).checked);
+    });
+  }
+
+  const overlayEl = document.getElementById("setting-overlay-opacity") as HTMLInputElement;
+  const overlayValEl = document.getElementById("value-overlay-opacity");
+  if (overlayEl) {
+    overlayEl.addEventListener("input", (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      if (overlayValEl) overlayValEl.textContent = `${val}%`;
+      handleSliderChange("overlay_opacity", val);
+    });
+  }
+
+  const dimmedEl = document.getElementById("setting-dimmed-opacity") as HTMLInputElement;
+  const dimmedValEl = document.getElementById("value-dimmed-opacity");
+  if (dimmedEl) {
+    dimmedEl.addEventListener("input", (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      if (dimmedValEl) dimmedValEl.textContent = `${val}%`;
+      handleSliderChange("dimmed_opacity", val);
+    });
+  }
+
   const savePasswordBtn = document.getElementById("btn-save-password");
   if (savePasswordBtn) {
     savePasswordBtn.addEventListener("click", () => {
@@ -245,4 +313,5 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
 });

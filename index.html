@@ -154,6 +154,14 @@
           <section id="page-settings" class="page">
             <div class="page-content settings-page">
               <h2 class="page-title">通用设置</h2>
+              <div id="restart-banner" class="restart-banner">
+                <svg class="restart-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span class="restart-banner-text">设置已更改，请重启应用以生效</span>
+              </div>
               <div class="settings-list">
                 <div class="setting-item">
                   <div class="setting-info">
@@ -165,11 +173,42 @@
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
+                <div class="setting-item setting-slider-item">
+                  <div class="setting-info">
+                    <span class="setting-label">正常模式背景透明度</span>
+                    <span class="setting-desc">锁屏时密码框显示状态下的背景透明度</span>
+                  </div>
+                  <div class="slider-control">
+                    <input type="range" id="setting-overlay-opacity" min="0" max="100" value="55" />
+                    <span class="slider-value" id="value-overlay-opacity">55%</span>
+                  </div>
+                </div>
+                <div class="setting-item setting-slider-item">
+                  <div class="setting-info">
+                    <span class="setting-label">隐藏密码框模式透明度</span>
+                    <span class="setting-desc">按 ESC 隐藏密码框后的背景透明度</span>
+                  </div>
+                  <div class="slider-control">
+                    <input type="range" id="setting-dimmed-opacity" min="0" max="100" value="85" />
+                    <span class="slider-value" id="value-dimmed-opacity">85%</span>
+                  </div>
+                </div>
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">呼吸灯效果</span>
+                    <span class="setting-desc">锁屏时显示呼吸灯动画</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="setting-breathing-light" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
               </div>
             </div>
           </section>
         </main>
       </div>
     </div>
+
   </body>
 </html>
