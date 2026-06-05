@@ -349,6 +349,15 @@ body {
   background-color: var(--accent-hover);
 }
 
+.lock-page {
+  justify-content: center;
+}
+
+.lock-start-form {
+  width: 100%;
+  max-width: 380px;
+}
+
 .settings-page {
   align-items: flex-start;
 }

@@ -34,6 +34,9 @@
           <line x1="8" y1="21" x2="16" y2="21"/>
           <line x1="12" y1="17" x2="12" y2="21"/>
         </symbol>
+        <symbol id="icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </symbol>
         <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </symbol>
@@ -73,6 +76,10 @@
             <li class="nav-item" data-page="password">
               <svg class="nav-icon-svg"><use href="#icon-key"/></svg>
               <span class="nav-text">设置密码</span>
+            </li>
+            <li class="nav-item" data-page="lock">
+              <svg class="nav-icon-svg"><use href="#icon-play"/></svg>
+              <span class="nav-text">开始锁屏</span>
             </li>
             <li class="nav-item" data-page="settings">
               <svg class="nav-icon-svg"><use href="#icon-settings"/></svg>
@@ -124,6 +131,22 @@
                 </div>
                 <div id="password-message" class="message"></div>
                 <button id="btn-save-password" class="btn btn-primary">保存密码</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="page-lock" class="page">
+            <div class="page-content lock-page">
+              <svg class="icon-welcome"><use href="#icon-lock"/></svg>
+              <h2 class="page-title">开始锁屏</h2>
+              <p class="page-desc">锁定屏幕以保护您的隐私，解锁需要输入密码</p>
+              <div class="lock-start-form">
+                <div class="form-group">
+                  <label for="lock-password">密码验证</label>
+                  <input id="lock-password" type="password" placeholder="请输入当前密码以开始锁屏" />
+                </div>
+                <div id="lock-message" class="message"></div>
+                <button id="btn-start-lock" class="btn btn-primary">立即锁屏</button>
               </div>
             </div>
           </section>

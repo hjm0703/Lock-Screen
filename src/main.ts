@@ -25,6 +25,9 @@ function navigateTo(page: string): void {
   if (page === "password") {
     updatePasswordForm().catch(() => {});
   }
+  if (page === "lock") {
+    updateLockPage().catch(() => {});
+  }
 }
 
 function showMessage(el: HTMLElement | null, text: string, type: "success" | "error"): void {
@@ -123,6 +126,65 @@ function handleToggleSetting(key: string, checked: boolean): void {
   });
 }
 
+async function updateLockPage(): Promise<void> {
+  const msgEl = document.getElementById("lock-message");
+  const pwdEl = document.getElementById("lock-password") as HTMLInputElement;
+  if (msgEl) {
+    msgEl.textContent = "";
+    msgEl.className = "message";
+  }
+  if (pwdEl) pwdEl.value = "";
+
+  try {
+    const hasPwd = await invoke("has_password") as boolean;
+    if (!hasPwd) {
+      if (msgEl) {
+        msgEl.textContent = "请先设置密码后再使用锁屏功能";
+        msgEl.className = "message error";
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function handleStartLock(): Promise<void> {
+  const pwdEl = document.getElementById("lock-password") as HTMLInputElement;
+  const msgEl = document.getElementById("lock-message");
+  const pwd = pwdEl?.value || "";
+
+  if (!pwd) {
+    if (msgEl) {
+      msgEl.textContent = "请输入密码";
+      msgEl.className = "message error";
+    }
+    return;
+  }
+
+  try {
+    const valid = await invoke("verify_password", { password: pwd }) as boolean;
+    if (valid) {
+      if (msgEl) {
+        msgEl.textContent = "";
+        msgEl.className = "message";
+      }
+      if (pwdEl) pwdEl.value = "";
+      await invoke("start_lock_screen");
+    } else {
+      if (msgEl) {
+        msgEl.textContent = "密码错误";
+        msgEl.className = "message error";
+      }
+      if (pwdEl) pwdEl.value = "";
+    }
+  } catch (err: unknown) {
+    if (msgEl) {
+      msgEl.textContent = `启动失败: ${err as string}`;
+      msgEl.className = "message error";
+    }
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   loadSettings().catch(() => {});
 
@@ -165,6 +227,22 @@ window.addEventListener("DOMContentLoaded", () => {
   if (savePasswordBtn) {
     savePasswordBtn.addEventListener("click", () => {
       void handleSavePassword();
+    });
+  }
+
+  const startLockBtn = document.getElementById("btn-start-lock");
+  if (startLockBtn) {
+    startLockBtn.addEventListener("click", () => {
+      void handleStartLock();
+    });
+  }
+
+  const lockPwdEl = document.getElementById("lock-password") as HTMLInputElement;
+  if (lockPwdEl) {
+    lockPwdEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        void handleStartLock();
+      }
     });
   }
 });

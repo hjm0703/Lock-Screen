@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/lock.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lock Screen</title>
+    <script type="module" src="/src/lock.ts" defer></script>
+  </head>
+  <body>
+    <div id="lock-overlay">
+      <div class="lock-container">
+        <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <h2 class="lock-title">屏幕已锁定</h2>
+        <p class="lock-desc">请输入密码解锁</p>
+        <div class="lock-form">
+          <input
+            id="unlock-password"
+            type="password"
+            placeholder="输入密码"
+            autocomplete="off"
+          />
+          <button id="btn-unlock" class="btn-unlock">解锁</button>
+        </div>
+        <div id="unlock-message" class="unlock-message"></div>
+      </div>
+    </div>
+  </body>
+</html>

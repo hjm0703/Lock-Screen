@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, State,
+    Manager, State, WebviewUrl, WebviewWindowBuilder,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -121,6 +121,45 @@ fn update_setting(key: String, value: bool, state: State<AppState>) -> Result<()
     Ok(())
 }
 
+#[tauri::command]
+fn start_lock_screen(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("lock") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    let monitor = app
+        .primary_monitor()
+        .map_err(|e| format!("获取显示器失败: {}", e))?
+        .ok_or("未找到主显示器")?;
+
+    let size = monitor.size();
+
+    let window = WebviewWindowBuilder::new(&app, "lock", WebviewUrl::App("/lock.html".into()))
+        .title("")
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .fullscreen(true)
+        .inner_size(size.width as f64, size.height as f64)
+        .position(0.0, 0.0)
+        .visible(true)
+        .build()
+        .map_err(|e| format!("创建锁屏窗口失败: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn unlock_screen(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("lock") {
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -179,7 +218,9 @@ pub fn run() {
             verify_password,
             has_password,
             get_settings,
-            update_setting
+            update_setting,
+            start_lock_screen,
+            unlock_screen
         ])
         .setup(|app| {
             setup_tray(app)?;

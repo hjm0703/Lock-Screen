@@ -24,15 +24,19 @@ Lock Screen/
 │   │   ├── main.rs               # 入口点（仅调用 lib.rs）
 │   │   └── lib.rs                # 核心逻辑（托盘、窗口管理、Tauri 命令）
 │   ├── capabilities/
-│   │   └── default.json          # 权限配置
+│   │   ├── default.json          # 主窗口权限配置
+│   │   └── lock.json             # 锁屏窗口权限配置
 │   ├── icons/                    # 应用图标
 │   ├── Cargo.toml                # Rust 依赖
 │   ├── build.rs                  # Tauri 构建脚本
 │   └── tauri.conf.json           # Tauri 配置
 ├── src/                          # 前端源码
-│   ├── main.ts                   # TypeScript 入口
-│   └── styles.css                # 样式
-├── index.html                    # HTML 入口（包含 SVG 图标定义）
+│   ├── main.ts                   # TypeScript 入口（设置界面）
+│   ├── lock.ts                   # 锁屏窗口逻辑
+│   ├── styles.css                # 设置界面样式
+│   └── lock.css                  # 锁屏窗口样式
+├── index.html                    # HTML 入口（设置界面，包含 SVG 图标定义）
+├── lock.html                     # 锁屏窗口 HTML
 ├── package.json                  # Node 依赖
 └── vite.config.ts                # Vite 配置
 ```
@@ -56,10 +60,18 @@ Lock Screen/
 
 ### 窗口配置
 
-窗口使用无框设计（`decorations: false`），自定义标题栏包含最小化和关闭按钮：
+#### 主窗口 (main)
+- 无框设计（`decorations: false`），自定义标题栏包含最小化和关闭按钮
 - **最小化按钮**：调用 `window.minimize()` 最小化窗口
 - **关闭按钮**：调用 `window.hide()` 隐藏到系统托盘
 - **托盘"显示窗口"菜单项**：切换窗口显示/隐藏
+
+#### 锁屏窗口 (lock)
+- 全屏覆盖，透明背景（`transparent: true`, `fullscreen: true`）
+- 始终置顶（`alwaysOnTop: true`）
+- 不显示在任务栏（`skipTaskbar: true`）
+- **解锁时调用 `window.hide()` 而非 `window.close()`**，保持窗口实例复用，确保透明效果一致
+- 窗口在 `tauri.conf.json` 的 `app.windows` 数组中预注册
 
 ### 数据持久化
 
@@ -96,6 +108,10 @@ fn has_password()           // 检查是否已设置密码
 fn get_settings()           // 获取所有配置
 #[tauri::command]
 fn update_setting()         // 更新单个配置项
+#[tauri::command]
+fn start_lock_screen()      // 启动锁屏窗口（验证密码后调用）
+#[tauri::command]
+fn unlock_screen()          // 解锁：隐藏锁屏窗口（不关闭，保持复用）
 
 fn setup_tray()             // 托盘图标和菜单设置
 fn setup_window_events()    // 窗口事件监听
@@ -138,6 +154,7 @@ cargo check
 **关键规则**：
 - 前端关闭窗口时调用 `window.hide()`，隐藏到托盘
 - 前端最小化窗口时调用 `window.minimize()`
+- 锁屏窗口解锁时调用 `window.hide()`，**不要调用 `window.close()`**
 - 必须配置对应权限，否则会报权限错误
 
 权限配置在 `src-tauri/capabilities/default.json`：
@@ -154,7 +171,10 @@ cargo check
 
 ### 4. 权限管理
 
-- 权限配置在 `src-tauri/capabilities/default.json`
+- 权限配置在 `src-tauri/capabilities/` 目录下
+- **每个窗口应有独立的权限文件**：
+  - `default.json` — 主窗口权限
+  - `lock.json` — 锁屏窗口权限
 - 添加使用 Tauri API 的前端功能时，需在此文件中声明对应权限
 - 常见权限格式：`core:window:allow-<action>`
 
@@ -176,6 +196,8 @@ cargo check
 | `has_password` | 无 | `Result<bool, String>` | 检查是否已设置密码 |
 | `get_settings` | 无 | `Result<AppSettings, String>` | 获取所有配置 |
 | `update_setting` | `key: String, value: bool` | `Result<(), String>` | 更新单个配置项 |
+| `start_lock_screen` | 无 | `Result<(), String>` | 启动锁屏窗口 |
+| `unlock_screen` | 无 | `Result<(), String>` | 隐藏锁屏窗口（解锁） |
 
 ### 7. 代码风格
 
@@ -194,11 +216,12 @@ cargo check
 
 ### 9. 多窗口注意事项
 
-当前只有一个 `main` 窗口。如需添加多窗口：
+当前有两个窗口：`main`（设置界面）和 `lock`（锁屏界面）。
 
-- 在 `tauri.conf.json` 中配置额外窗口
+- 在 `tauri.conf.json` 的 `app.windows` 数组中配置所有窗口
 - 使用 `app.get_webview_window("窗口名")` 获取特定窗口
-- 为不同窗口设置独立的权限
+- **为不同窗口设置独立的权限文件**（`capabilities/*.json`）
+- **锁屏窗口解锁时只隐藏不关闭**，避免重新创建导致透明效果丢失
 
 ### 10. 依赖说明
 
@@ -209,6 +232,7 @@ cargo check
 - `serde_json` — JSON 处理
 - `sha2` — 密码 hash（SHA-256）
 - `hex` — hash 结果十六进制编码
+- `winapi` — Windows API 调用（Windows 平台）
 
 ## 常见任务参考
 
@@ -271,6 +295,13 @@ const result = await invoke("my_command", { param: "value" });
   color: var(--accent-color);
 }
 ```
+
+### 添加新窗口
+
+1. 在 `tauri.conf.json` 的 `app.windows` 数组中添加窗口配置
+2. 创建对应的 HTML 文件（如 `newpage.html`）
+3. 创建对应的 TS/CSS 文件（如 `src/newpage.ts`, `src/newpage.css`）
+4. 如需前端调用窗口操作，在 `capabilities/` 下新建权限文件
 
 ## 安全注意事项
 

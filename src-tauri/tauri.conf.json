@@ -14,11 +14,26 @@
     "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "lock-screen",
         "width": 900,
         "height": 650,
         "decorations": false,
         "resizable": false
+      },
+      {
+        "label": "lock",
+        "title": "",
+        "url": "/lock.html",
+        "fullscreen": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "transparent": true,
+        "visible": false,
+        "focus": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "center": false
       }
     ],
     "security": {
