@@ -132,11 +132,31 @@ html, body {
 }
 
 .unlock-message {
-  margin-top: 14px;
-  font-size: 13px;
-  min-height: 18px;
-  color: #ef4444;
   text-align: center;
+  margin-top: 32px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  min-height: 20px;
+}
+
+.click-hint {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.click-hint.visible {
+  opacity: 1;
+  animation: hint-fade-out 2.5s ease forwards;
+}
+
+@keyframes hint-fade-out {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .breathing-indicator {

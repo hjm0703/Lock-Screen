@@ -9,7 +9,7 @@ export default defineConfig(async () => ({
     rollupOptions: {
       input: {
         index: "index.html",
-        lockscreen: "lockscreen.html",
+        lockscreen: "lock.html",
       },
     },
   },

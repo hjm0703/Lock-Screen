@@ -22,10 +22,13 @@ Lock Screen/
 ├── src-tauri/                    # Tauri 后端
 │   ├── src/
 │   │   ├── main.rs               # 入口点（仅调用 lib.rs）
-│   │   └── lib.rs                # 核心逻辑（托盘、窗口管理、Tauri 命令）
+│   │   ├── lib.rs                # 核心逻辑（托盘、窗口管理、Tauri 命令、钩子状态管理）
+│   │   └── hooks.rs              # 底层键盘钩子 + 鼠标钩子
 │   ├── capabilities/
 │   │   ├── default.json          # 主窗口权限配置
 │   │   └── lock.json             # 锁屏窗口权限配置
+│   ├── resources/                # 打包时附带的外部资源
+│   │   └── keyhook.exe           # 外部 Win 键拦截 EXE（打包时自动包含）
 │   ├── icons/                    # 应用图标
 │   ├── Cargo.toml                # Rust 依赖
 │   ├── build.rs                  # Tauri 构建脚本
@@ -85,15 +88,52 @@ Lock Screen/
 - 密码 hash 保存在 `settings.json` 的 `password_hash` 字段
 - **修改密码需要验证原密码**（如果已设置密码）
 
+### 键盘钩子系统 (hooks.rs)
+
+底层使用两个全局钩子：`WH_KEYBOARD_LL`（键盘）和 `WH_MOUSE_LL`（鼠标），在独立线程中运行消息循环。
+
+**状态定义：**
+- `0` = 未锁屏（正常，不拦截任何键）
+- `1` = 锁屏显示，密码框隐藏（拦截所有键，仅保留 ESC）
+- `2` = 锁屏显示，密码框可见（只允许数字/字母/退格/回车/空格/方向键等，不包含 Shift/Tab）
+
+**关键实现细节：**
+- 使用 `GetModuleHandleW(null)` 作为 `SetWindowsHookExW` 的 hMod 参数
+- 键盘钩子只拦截 `WM_KEYDOWN` / `WM_SYSKEYDOWN`，**必须放行 `WM_KEYUP` / `WM_SYSKEYUP`**（否则系统按键状态卡死）
+- **Win 键不由 Rust 钩子拦截**，Win 键事件穿透到系统，由外部 `keyhook.exe` 负责封禁
+- 鼠标钩子允许 `WM_MOUSEMOVE` 通过（光标可自由移动），但拦截所有鼠标点击事件（`WM_LBUTTONDOWN` 等），点击时设置 `MOUSE_CLICKED` 原子标志供前端轮询
+- 钩子线程运行 `GetMessageW` 消息泵，这是系统分发钩子事件的必要条件
+- 使用 `AtomicU8` 存储状态，`AtomicBool` 存储点击标志，`AtomicU8` 防止钩子重复安装
+
+**日志：** 钩子运行日志写入 **EXE 同级目录的 `hook.log`**，包含安装状态、状态变更、每次按键的拦截/放行决策。
+
+### 外部 Win 键拦截 (keyhook.exe)
+
+Rust 钩子不负责拦截 Win 键，改为调用外部 EXE 进程：
+
+```
+锁屏 → start_lock_screen → spawn keyhook.exe（位于 EXE 目录下的 resources/）
+解锁 → unlock_screen    → kill 该进程
+```
+
+EXE 需命名为 `keyhook.exe`，放在 `src-tauri/resources/` 目录下。打包时通过 `tauri.conf.json` 的 `bundle.resources` 自动包含。
+
+### 输入法管理
+
+锁屏时自动强制切换为英文输入，解锁时恢复原输入法：
+- 锁屏调用 `set_lock_state(2)` 时 → 保存当前输入法 → `LoadKeyboardLayoutW("00000409")` + `ActivateKeyboardLayout` 强制切为英文
+- 解锁调用 `set_lock_state(0)` 时 → 恢复锁屏前保存的输入法
+
 ### 代码组织结构
 
 `lib.rs` 采用函数分离设计，每个功能独立封装：
 
 ```rust
 struct AppSettings          // 配置数据结构
-struct AppState             // 应用状态（包含 Mutex<AppSettings>）
+struct AppState             // 应用状态（包含 Mutex<AppSettings> + Mutex<Option<Child>> 钩子进程）
 
 fn get_settings_path()      // 获取 EXE 同级目录 settings.json 路径
+fn get_hook_exe_path()      // 获取 EXE 同级目录 resources/keyhook.exe 路径
 fn load_settings()          // 加载配置
 fn save_settings()          // 保存配置
 fn hash_password()          // 密码 SHA-256 hash
@@ -109,10 +149,15 @@ fn get_settings()           // 获取所有配置
 #[tauri::command]
 fn update_setting()         // 更新单个配置项
 #[tauri::command]
-fn start_lock_screen()      // 启动锁屏窗口（验证密码后调用）
+fn start_lock_screen()      // 启动锁屏窗口 + spawn keyhook.exe
 #[tauri::command]
-fn unlock_screen()          // 解锁：隐藏锁屏窗口（不关闭，保持复用）
+fn unlock_screen()          // 解锁：隐藏锁屏窗口 + 终止 keyhook.exe + 恢复输入法
+#[tauri::command]
+fn set_password_visible()   // 通知后端密码框显示/隐藏状态变更
+#[tauri::command]
+fn poll_mouse_click()       // 轮询鼠标点击标志
 
+fn kill_hook_process()      // 终止 keyhook.exe 进程
 fn setup_tray()             // 托盘图标和菜单设置
 fn setup_window_events()    // 窗口事件监听
 fn toggle_window_visibility()  // 窗口显示/隐藏切换
@@ -196,8 +241,10 @@ cargo check
 | `has_password` | 无 | `Result<bool, String>` | 检查是否已设置密码 |
 | `get_settings` | 无 | `Result<AppSettings, String>` | 获取所有配置 |
 | `update_setting` | `key: String, value: f64` | `Result<(), String>` | 更新单个配置项（bool 类型传 1.0/0.0） |
-| `start_lock_screen` | 无 | `Result<(), String>` | 启动锁屏窗口 |
-| `unlock_screen` | 无 | `Result<(), String>` | 隐藏锁屏窗口（解锁） |
+| `start_lock_screen` | 无 | `Result<(), String>` | 启动锁屏窗口 + 启动 keyhook.exe |
+| `unlock_screen` | 无 | `Result<(), String>` | 隐藏锁屏窗口 + 终止 keyhook.exe + 恢复输入法 |
+| `set_password_visible` | `visible: bool` | `Result<(), String>` | 通知后端密码框显示/隐藏状态 |
+| `poll_mouse_click` | 无 | `bool` | 轮询鼠标点击标志（前端每 200ms 调用），返回 true 后清除 |
 
 ### 7. 代码风格
 
@@ -232,7 +279,7 @@ cargo check
 - `serde_json` — JSON 处理
 - `sha2` — 密码 hash（SHA-256）
 - `hex` — hash 结果十六进制编码
-- `winapi` — Windows API 调用（Windows 平台）
+- `winapi` — Windows API 调用（Windows 平台），features 包含 `winuser`, `windef`, `wincon`, `handleapi`, `processthreadsapi`, `errhandlingapi`, `libloaderapi`, `winbase`
 
 ## 常见任务参考
 
@@ -261,6 +308,18 @@ tauri-plugin-xxx = "2"
 // lib.rs run() 中初始化
 .plugin(tauri_plugin_xxx::init())
 ```
+
+### 打包时附带外部文件
+
+在 `tauri.conf.json` 中添加 `bundle.resources` 字段，打包时外部文件会放在 EXE 同级目录的对应路径下：
+
+```json
+"bundle": {
+  "resources": ["resources/keyhook.exe"]
+}
+```
+
+代码中通过 `std::env::current_exe()` 获取 EXE 目录来定位：
 
 ### 添加新的配置项
 

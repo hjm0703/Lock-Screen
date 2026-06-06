@@ -1,7 +1,10 @@
+mod hooks;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -32,6 +35,7 @@ impl Default for AppSettings {
 
 struct AppState {
     settings: Mutex<AppSettings>,
+    hook_process: Mutex<Option<Child>>,
 }
 
 fn get_settings_path() -> PathBuf {
@@ -41,6 +45,21 @@ fn get_settings_path() -> PathBuf {
         .unwrap_or_else(|| std::path::Path::new("."))
         .to_path_buf();
     path.push("settings.json");
+    path
+}
+
+fn get_exe_dir() -> PathBuf {
+    std::env::current_exe()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf()
+}
+
+fn get_hook_exe_path() -> PathBuf {
+    let mut path = get_exe_dir();
+    path.push("resources");
+    path.push("keyhook.exe");
     path
 }
 
@@ -138,6 +157,27 @@ fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<()
     let breathing_light = settings.breathing_light;
     drop(settings);
 
+    hooks::set_lock_state(2);
+
+    // 先杀掉可能残留的旧进程
+    kill_hook_process(&state);
+
+    // 启动外部钩子 EXE，封禁 Win 键等系统快捷键
+    let hook_path = get_hook_exe_path();
+    if hook_path.exists() {
+        match Command::new(&hook_path).spawn() {
+            Ok(child) => {
+                *state.hook_process.lock().unwrap() = Some(child);
+                eprintln!("[LockScreen] 钩子进程已启动: {:?}", hook_path);
+            }
+            Err(e) => {
+                eprintln!("[LockScreen] 启动钩子进程失败: {}", e);
+            }
+        }
+    } else {
+        eprintln!("[LockScreen] 钩子 EXE 未找到: {:?}", hook_path);
+    }
+
     let js = format!(
         "window.__overlayOpacity = {}; window.__dimmedOpacity = {}; window.__breathingLight = {}; \
          const el = document.getElementById('lock-overlay'); \
@@ -184,9 +224,35 @@ fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<()
 }
 
 #[tauri::command]
-fn unlock_screen(app: tauri::AppHandle) -> Result<(), String> {
+fn poll_mouse_click() -> bool {
+    hooks::poll_mouse_click()
+}
+
+fn kill_hook_process(state: &State<AppState>) {
+    if let Some(mut child) = state.hook_process.lock().unwrap().take() {
+        eprintln!("[LockScreen] 正在终止钩子进程...");
+        let _ = child.kill();
+        let _ = child.wait();
+        eprintln!("[LockScreen] 钩子进程已终止");
+    }
+}
+
+#[tauri::command]
+fn unlock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("lock") {
         let _ = window.hide();
+    }
+    hooks::set_lock_state(0);
+    kill_hook_process(&state);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_password_visible(visible: bool) -> Result<(), String> {
+    if visible {
+        hooks::set_lock_state(2);
+    } else {
+        hooks::set_lock_state(1);
     }
     Ok(())
 }
@@ -239,6 +305,7 @@ pub fn run() {
     let settings = load_settings();
     let app_state = AppState {
         settings: Mutex::new(settings),
+        hook_process: Mutex::new(None),
     };
 
     tauri::Builder::default()
@@ -251,11 +318,14 @@ pub fn run() {
             get_settings,
             update_setting,
             start_lock_screen,
-            unlock_screen
+            unlock_screen,
+            set_password_visible,
+            poll_mouse_click
         ])
         .setup(|app| {
             setup_tray(app)?;
             setup_window_events(app)?;
+            hooks::install_keyboard_hook();
             Ok(())
         })
         .run(tauri::generate_context!())
