@@ -1,0 +1,14 @@
+[package]
+name = "keyhook"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winapi = { version = "0.3", features = [
+    "winuser",
+    "libloaderapi",
+    "winreg",
+    "minwindef",
+    "windef",
+] }
+lazy_static = "1.4"
