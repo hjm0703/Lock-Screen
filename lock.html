@@ -8,14 +8,22 @@
     <script type="module" src="/src/lock.ts" defer></script>
   </head>
   <body>
+    <img id="lock-bg-img" class="lock-bg-img" alt="" />
     <div id="lock-overlay">
-      <div class="lock-container">
+      <!-- 时钟区域 -->
+      <div class="clock-section">
+        <div class="clock-time" id="clock-time">--:--</div>
+        <div class="clock-date" id="clock-date">----年--月--日 星期-</div>
+      </div>
+
+      <!-- 锁屏交互区域 -->
+      <div class="lock-form-section">
         <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
         <h2 class="lock-title">屏幕已锁定</h2>
-        <p class="lock-desc">请输入密码解锁</p>
+        <p class="lock-desc">请输入密码解锁 · 按 Esc 隐藏密码框</p>
         <div class="lock-form">
           <input
             id="unlock-password"
@@ -25,9 +33,10 @@
           />
           <button id="btn-unlock" class="btn-unlock">解锁</button>
         </div>
-        <div id="unlock-message" class="unlock-message">按下 Enter 解锁</div>
-        <div class="click-hint" id="click-hint">请按 Enter 解锁 · 鼠标点击无效</div>
+        <div id="unlock-message" class="unlock-message"></div>
+        <div class="click-hint" id="click-hint">鼠标点击无效 · 请按 Enter 键解锁</div>
       </div>
+
       <div class="breathing-indicator"></div>
     </div>
   </body>

@@ -8,8 +8,34 @@ html, body {
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   overflow: hidden;
   background: transparent !important;
+  height: 100%;
 }
 
+/* ===== 背景图片 ===== */
+.lock-bg-img {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: -2;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+
+/* 显示密码框时 */
+body:has(#lock-overlay:not(.dimmed)) .lock-bg-img.show {
+  opacity: var(--bg-image-opacity-overlay, 1);
+}
+
+/* 隐藏密码框时 */
+body:has(#lock-overlay.dimmed) .lock-bg-img.show {
+  opacity: var(--bg-image-opacity-dimmed, 1);
+}
+
+/* ===== 遮罩层 ===== */
 #lock-overlay {
   position: fixed;
   top: 0;
@@ -17,99 +43,174 @@ html, body {
   width: 100vw;
   height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, var(--overlay-opacity, 0.55));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* 默认无背景图片：半透明黑色遮罩 + 模糊 */
+  background-color: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   transition: background-color 0.4s ease;
+  /* 背景纹理 */
+  background-image:
+    radial-gradient(ellipse at 50% 30%, rgba(79, 143, 247, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 70%, rgba(79, 143, 247, 0.05) 0%, transparent 50%);
+}
+
+/* 有背景图片时：默认透明无遮罩 */
+#lock-overlay.has-bg-image {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: transparent;
+}
+
+/* 有背景图片 + 显示密码框时：仅启用模糊，无黑色遮罩 */
+#lock-overlay.has-bg-image:not(.dimmed) {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 #lock-overlay.dimmed {
-  background-color: rgba(0, 0, 0, var(--dimmed-opacity, 0.85));
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  background-image: none;
 }
 
-.lock-container {
+/* 有背景图片 + 隐藏密码框时：完全透明，无任何效果 */
+#lock-overlay.dimmed.has-bg-image {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: transparent;
+}
+
+/* ===== 时钟隐藏 ===== */
+.clock-hidden .clock-section {
+  display: none;
+}
+
+/* ===== 时钟区域 ===== */
+.clock-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 56px;
-  background-color: rgba(255, 255, 255, 0.92);
+  margin-bottom: 60px;
+  animation: clockFadeIn 0.6s ease;
+}
+
+.clock-time {
+  font-size: 96px;
+  font-weight: 200;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 6px;
+  line-height: 1;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-date {
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 12px;
+  letter-spacing: 2px;
+}
+
+/* ===== 锁屏表单区域 ===== */
+.lock-form-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 52px 36px;
+  background-color: rgba(30, 30, 40, 0.72);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
   border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  min-width: 340px;
-  animation: lockFadeIn 0.4s ease;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  min-width: 360px;
+  animation: formSlideUp 0.5s ease;
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-.lock-container.hidden {
+.lock-form-section.hidden {
   opacity: 0;
-  transform: scale(0.95);
+  transform: scale(0.92) translateY(10px);
   pointer-events: none;
 }
 
-@keyframes lockFadeIn {
+@keyframes clockFadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.96);
+    transform: translateY(-30px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
+  }
+}
+
+@keyframes formSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 .lock-icon {
-  width: 56px;
-  height: 56px;
-  color: #4f8ff7;
-  margin-bottom: 20px;
+  width: 40px;
+  height: 40px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 16px;
 }
 
 .lock-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: rgba(255, 255, 255, 0.92);
   margin-bottom: 6px;
 }
 
 .lock-desc {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 28px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 24px;
 }
 
 .lock-form {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .lock-form input {
   width: 100%;
   padding: 12px 16px;
   font-size: 15px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 10px;
-  background-color: #ffffff;
-  color: #1a1a2e;
-  transition: all 0.15s ease;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+  transition: all 0.2s ease;
   font-family: inherit;
   text-align: center;
   letter-spacing: 2px;
+  outline: none;
 }
 
 .lock-form input:focus {
-  outline: none;
-  border-color: #4f8ff7;
-  box-shadow: 0 0 0 3px rgba(79, 143, 247, 0.15);
+  border-color: rgba(79, 143, 247, 0.7);
+  background-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 3px rgba(79, 143, 247, 0.2);
 }
 
 .lock-form input::placeholder {
-  color: #9ca3af;
+  color: rgba(255, 255, 255, 0.35);
   letter-spacing: normal;
 }
 
@@ -120,22 +221,27 @@ html, body {
   font-weight: 500;
   font-family: inherit;
   border: none;
-  border-radius: 10px;
-  background-color: #4f8ff7;
-  color: #ffffff;
+  border-radius: 12px;
+  background-color: rgba(79, 143, 247, 0.85);
+  color: rgba(255, 255, 255, 0.95);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .btn-unlock:hover {
-  background-color: #3b7de8;
+  background-color: rgba(79, 143, 247, 1);
+  transform: translateY(-1px);
+}
+
+.btn-unlock:active {
+  transform: translateY(0);
 }
 
 .unlock-message {
   text-align: center;
-  margin-top: 32px;
+  margin-top: 14px;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: #f87171;
   min-height: 20px;
 }
 
@@ -143,7 +249,7 @@ html, body {
   text-align: center;
   margin-top: 10px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.35);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -159,6 +265,7 @@ html, body {
   100% { opacity: 0; }
 }
 
+/* ===== 呼吸灯 ===== */
 .breathing-indicator {
   position: absolute;
   bottom: 48px;
@@ -167,7 +274,7 @@ html, body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #4f8ff7;
+  background-color: rgba(79, 143, 247, 0.6);
   opacity: 0;
   pointer-events: none;
 }
@@ -178,11 +285,11 @@ html, body {
 
 @keyframes breathe {
   0%, 100% {
-    opacity: 0.2;
+    opacity: 0.15;
     transform: translateX(-50%) scale(1);
   }
   50% {
-    opacity: 0.8;
-    transform: translateX(-50%) scale(1.6);
+    opacity: 0.6;
+    transform: translateX(-50%) scale(1.8);
   }
 }

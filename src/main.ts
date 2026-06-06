@@ -108,35 +108,113 @@ function handleWindowClose(): void {
   void window.hide();
 }
 
+async function loadBackgroundImages(): Promise<void> {
+  try {
+    const images = await invoke<string[]>("list_background_images");
+    const selectEl = document.getElementById("setting-bg-image-file") as HTMLSelectElement;
+    if (!selectEl) return;
+    // 保留当前选中值
+    const currentVal = selectEl.value;
+    selectEl.innerHTML = "";
+    if (images.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "暂无图片";
+      selectEl.appendChild(opt);
+    } else {
+      const emptyOpt = document.createElement("option");
+      emptyOpt.value = "";
+      emptyOpt.textContent = "（不选择）";
+      selectEl.appendChild(emptyOpt);
+      images.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        selectEl.appendChild(opt);
+      });
+    }
+    // 恢复选中值
+    if (currentVal && images.includes(currentVal)) {
+      selectEl.value = currentVal;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function updateBgImageUI(enabled: boolean): void {
+  const selectItem = document.getElementById("bg-image-select-item");
+  const dimmedItem = document.getElementById("bg-image-show-dimmed-item");
+  const overlayItem = document.getElementById("bg-image-show-overlay-item");
+  const opacityOverlayItem = document.getElementById("bg-image-opacity-overlay-item");
+  const opacityDimmedItem = document.getElementById("bg-image-opacity-dimmed-item");
+  const display = enabled ? "flex" : "none";
+  if (selectItem) selectItem.style.display = display;
+  if (dimmedItem) dimmedItem.style.display = display;
+  if (overlayItem) overlayItem.style.display = display;
+  if (opacityOverlayItem) opacityOverlayItem.style.display = display;
+  if (opacityDimmedItem) opacityDimmedItem.style.display = display;
+  if (enabled) {
+    loadBackgroundImages();
+  }
+}
+
 async function loadSettings(): Promise<void> {
   try {
     const result = await invoke("get_settings");
     const settings = result as Record<string, unknown>;
     const autoHideEl = document.getElementById("setting-auto-hide") as HTMLInputElement;
-    const overlayEl = document.getElementById("setting-overlay-opacity") as HTMLInputElement;
-    const dimmedEl = document.getElementById("setting-dimmed-opacity") as HTMLInputElement;
-    const overlayValEl = document.getElementById("value-overlay-opacity");
-    const dimmedValEl = document.getElementById("value-dimmed-opacity");
     const breathingEl = document.getElementById("setting-breathing-light") as HTMLInputElement;
+    const clockVisibleEl = document.getElementById("setting-clock-visible") as HTMLInputElement;
+    const bgImageEnabledEl = document.getElementById("setting-bg-image-enabled") as HTMLInputElement;
+    const bgImageShowDimmedEl = document.getElementById("setting-bg-image-show-dimmed") as HTMLInputElement;
+    const bgImageShowOverlayEl = document.getElementById("setting-bg-image-show-overlay") as HTMLInputElement;
+    const bgImageOpacityOverlayEl = document.getElementById("setting-bg-image-opacity-overlay") as HTMLInputElement;
+    const bgImageOpacityOverlayValEl = document.getElementById("value-bg-image-opacity-overlay");
+    const bgImageOpacityDimmedEl = document.getElementById("setting-bg-image-opacity-dimmed") as HTMLInputElement;
+    const bgImageOpacityDimmedValEl = document.getElementById("value-bg-image-opacity-dimmed");
+    const bgImageFileEl = document.getElementById("setting-bg-image-file") as HTMLSelectElement;
 
     if (autoHideEl) autoHideEl.checked = Boolean(settings.auto_hide);
-    if (overlayEl) {
-      const v = Math.round(((settings.overlay_opacity as number) ?? 0.55) * 100);
-      overlayEl.value = String(v);
-      if (overlayValEl) overlayValEl.textContent = `${v}%`;
-    }
-    if (dimmedEl) {
-      const v = Math.round(((settings.dimmed_opacity as number) ?? 0.85) * 100);
-      dimmedEl.value = String(v);
-      if (dimmedValEl) dimmedValEl.textContent = `${v}%`;
-    }
     if (breathingEl) breathingEl.checked = Boolean(settings.breathing_light);
+    if (clockVisibleEl) clockVisibleEl.checked = Boolean(settings.clock_visible ?? true);
+    if (bgImageEnabledEl) {
+      const enabled = Boolean(settings.bg_image_enabled);
+      bgImageEnabledEl.checked = enabled;
+      updateBgImageUI(enabled);
+    }
+    if (bgImageShowDimmedEl) bgImageShowDimmedEl.checked = Boolean(settings.bg_image_show_dimmed);
+    if (bgImageShowOverlayEl) bgImageShowOverlayEl.checked = Boolean(settings.bg_image_show_overlay ?? true);
+    if (bgImageOpacityOverlayEl) {
+      const stored = (settings.bg_image_opacity_overlay as number) ?? 1.0;
+      const v = Math.round((1 - stored) * 100);
+      bgImageOpacityOverlayEl.value = String(v);
+      if (bgImageOpacityOverlayValEl) bgImageOpacityOverlayValEl.textContent = `${v}%`;
+    }
+    if (bgImageOpacityDimmedEl) {
+      const stored = (settings.bg_image_opacity_dimmed as number) ?? 1.0;
+      const v = Math.round((1 - stored) * 100);
+      bgImageOpacityDimmedEl.value = String(v);
+      if (bgImageOpacityDimmedValEl) bgImageOpacityDimmedValEl.textContent = `${v}%`;
+    }
+    if (bgImageFileEl) {
+      const file = settings.bg_image_file as string | null;
+      if (file) bgImageFileEl.value = file;
+    }
   } catch {
     // ignore load errors
   }
 }
 
-const NEED_RESTART_KEYS = ["overlay_opacity", "dimmed_opacity", "breathing_light"];
+const NEED_RESTART_KEYS = [
+  "breathing_light",
+  "bg_image_enabled",
+  "bg_image_show_dimmed",
+  "bg_image_show_overlay",
+  "bg_image_opacity_overlay",
+  "bg_image_opacity_dimmed",
+  "clock_visible",
+];
 
 function showRestartBanner(): void {
   const banner = document.getElementById("restart-banner");
@@ -271,23 +349,68 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  const overlayEl = document.getElementById("setting-overlay-opacity") as HTMLInputElement;
-  const overlayValEl = document.getElementById("value-overlay-opacity");
-  if (overlayEl) {
-    overlayEl.addEventListener("input", (e) => {
-      const val = parseInt((e.target as HTMLInputElement).value, 10);
-      if (overlayValEl) overlayValEl.textContent = `${val}%`;
-      handleSliderChange("overlay_opacity", val);
+  // 时钟可见性
+  const clockVisibleEl = document.getElementById("setting-clock-visible");
+  if (clockVisibleEl) {
+    clockVisibleEl.addEventListener("change", (e) => {
+      handleToggleSetting("clock_visible", (e.target as HTMLInputElement).checked);
     });
   }
 
-  const dimmedEl = document.getElementById("setting-dimmed-opacity") as HTMLInputElement;
-  const dimmedValEl = document.getElementById("value-dimmed-opacity");
-  if (dimmedEl) {
-    dimmedEl.addEventListener("input", (e) => {
+  // 背景图片开关
+  const bgImageEnabledEl = document.getElementById("setting-bg-image-enabled");
+  if (bgImageEnabledEl) {
+    bgImageEnabledEl.addEventListener("change", (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      handleToggleSetting("bg_image_enabled", checked);
+      updateBgImageUI(checked);
+    });
+  }
+
+  // 隐藏密码框时显示背景
+  const bgImageShowDimmedEl = document.getElementById("setting-bg-image-show-dimmed");
+  if (bgImageShowDimmedEl) {
+    bgImageShowDimmedEl.addEventListener("change", (e) => {
+      handleToggleSetting("bg_image_show_dimmed", (e.target as HTMLInputElement).checked);
+    });
+  }
+
+  // 显示密码框时显示背景
+  const bgImageShowOverlayEl = document.getElementById("setting-bg-image-show-overlay");
+  if (bgImageShowOverlayEl) {
+    bgImageShowOverlayEl.addEventListener("change", (e) => {
+      handleToggleSetting("bg_image_show_overlay", (e.target as HTMLInputElement).checked);
+    });
+  }
+
+  // 选择背景图片
+  const bgImageFileEl = document.getElementById("setting-bg-image-file");
+  if (bgImageFileEl) {
+    bgImageFileEl.addEventListener("change", (e) => {
+      const val = (e.target as HTMLSelectElement).value || null;
+      invoke("set_bg_image_file", { filename: val }).catch(() => {});
+    });
+  }
+
+  // 背景图片透明度 - 显示密码框时（滑块值越大越透明）
+  const bgImageOpacityOverlayEl = document.getElementById("setting-bg-image-opacity-overlay") as HTMLInputElement;
+  const bgImageOpacityOverlayValEl = document.getElementById("value-bg-image-opacity-overlay");
+  if (bgImageOpacityOverlayEl) {
+    bgImageOpacityOverlayEl.addEventListener("input", (e) => {
       const val = parseInt((e.target as HTMLInputElement).value, 10);
-      if (dimmedValEl) dimmedValEl.textContent = `${val}%`;
-      handleSliderChange("dimmed_opacity", val);
+      if (bgImageOpacityOverlayValEl) bgImageOpacityOverlayValEl.textContent = `${val}%`;
+      handleSliderChange("bg_image_opacity_overlay", 100 - val);
+    });
+  }
+
+  // 背景图片透明度 - 隐藏密码框时（滑块值越大越透明）
+  const bgImageOpacityDimmedEl = document.getElementById("setting-bg-image-opacity-dimmed") as HTMLInputElement;
+  const bgImageOpacityDimmedValEl = document.getElementById("value-bg-image-opacity-dimmed");
+  if (bgImageOpacityDimmedEl) {
+    bgImageOpacityDimmedEl.addEventListener("input", (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      if (bgImageOpacityDimmedValEl) bgImageOpacityDimmedValEl.textContent = `${val}%`;
+      handleSliderChange("bg_image_opacity_dimmed", 100 - val);
     });
   }
 
@@ -310,6 +433,35 @@ window.addEventListener("DOMContentLoaded", () => {
     lockPwdEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         void handleStartLock();
+      }
+    });
+  }
+
+  // 导入图片按钮
+  const importBtn = document.getElementById("btn-import-wallpaper");
+  const fileInput = document.getElementById("wallpaper-file-input") as HTMLInputElement;
+  if (importBtn && fileInput) {
+    importBtn.addEventListener("click", () => {
+      fileInput.click();
+    });
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        // 通过 Rust 后端复制到 EXE/images 目录
+        const fileName = file.name;
+        const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+        await invoke("import_wallpaper", { fileName, bytes });
+        // 刷新列表并选中
+        await loadBackgroundImages();
+        const selectEl = document.getElementById("setting-bg-image-file") as HTMLSelectElement;
+        if (selectEl && Array.from(selectEl.options).some((o) => o.value === fileName)) {
+          selectEl.value = fileName;
+          await invoke("set_bg_image_file", { filename: fileName });
+        }
+        fileInput.value = "";
+      } catch (err: unknown) {
+        console.error("导入图片失败:", err);
       }
     });
   }

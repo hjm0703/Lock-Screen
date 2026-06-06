@@ -1,11 +1,13 @@
 mod hooks;
 
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -16,9 +18,14 @@ use tauri::{
 struct AppSettings {
     password_hash: Option<String>,
     auto_hide: bool,
-    overlay_opacity: f64,
-    dimmed_opacity: f64,
     breathing_light: bool,
+    bg_image_enabled: bool,
+    bg_image_file: Option<String>,
+    bg_image_show_dimmed: bool,
+    bg_image_show_overlay: bool,
+    bg_image_opacity_overlay: f64,
+    bg_image_opacity_dimmed: f64,
+    clock_visible: bool,
 }
 
 impl Default for AppSettings {
@@ -26,9 +33,14 @@ impl Default for AppSettings {
         Self {
             password_hash: None,
             auto_hide: false,
-            overlay_opacity: 0.55,
-            dimmed_opacity: 0.85,
             breathing_light: true,
+            bg_image_enabled: false,
+            bg_image_file: None,
+            bg_image_show_dimmed: false,
+            bg_image_show_overlay: true,
+            bg_image_opacity_overlay: 1.0,
+            bg_image_opacity_dimmed: 1.0,
+            clock_visible: true,
         }
     }
 }
@@ -37,6 +49,8 @@ struct AppState {
     settings: Mutex<AppSettings>,
     hook_process: Mutex<Option<Child>>,
 }
+
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 fn get_settings_path() -> PathBuf {
     let mut path = std::env::current_exe()
@@ -61,6 +75,27 @@ fn get_hook_exe_path() -> PathBuf {
     path.push("resources");
     path.push("keyhook.exe");
     path
+}
+
+fn get_images_dir() -> PathBuf {
+    let mut path = get_exe_dir();
+    path.push("images");
+    path
+}
+
+fn read_image_as_data_url(path: &PathBuf) -> Option<String> {
+    let ext = path.extension()?.to_str()?.to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "bmp" => "image/bmp",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => return None,
+    };
+    let bytes = fs::read(path).ok()?;
+    let b64 = base64::prelude::BASE64_STANDARD.encode(&bytes);
+    Some(format!("data:{};base64,{}", mime, b64))
 }
 
 fn load_settings() -> AppSettings {
@@ -140,9 +175,13 @@ fn update_setting(key: String, value: f64, state: State<AppState>) -> Result<(),
     let mut settings = state.settings.lock().unwrap();
     match key.as_str() {
         "auto_hide" => settings.auto_hide = value > 0.5,
-        "overlay_opacity" => settings.overlay_opacity = value.clamp(0.0, 1.0),
-        "dimmed_opacity" => settings.dimmed_opacity = value.clamp(0.0, 1.0),
         "breathing_light" => settings.breathing_light = value > 0.5,
+        "bg_image_enabled" => settings.bg_image_enabled = value > 0.5,
+        "bg_image_show_dimmed" => settings.bg_image_show_dimmed = value > 0.5,
+        "bg_image_show_overlay" => settings.bg_image_show_overlay = value > 0.5,
+        "bg_image_opacity_overlay" => settings.bg_image_opacity_overlay = value.clamp(0.0, 1.0),
+        "bg_image_opacity_dimmed" => settings.bg_image_opacity_dimmed = value.clamp(0.0, 1.0),
+        "clock_visible" => settings.clock_visible = value > 0.5,
         _ => return Err(format!("未知设置项: {}", key)),
     }
     save_settings(&settings)?;
@@ -150,23 +189,77 @@ fn update_setting(key: String, value: f64, state: State<AppState>) -> Result<(),
 }
 
 #[tauri::command]
-fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
-    let settings = state.settings.lock().unwrap();
-    let overlay_opacity = settings.overlay_opacity;
-    let dimmed_opacity = settings.dimmed_opacity;
+fn set_bg_image_file(filename: Option<String>, state: State<AppState>) -> Result<(), String> {
+    let mut settings = state.settings.lock().unwrap();
+    settings.bg_image_file = filename;
+    save_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn list_background_images() -> Result<Vec<String>, String> {
+    let dir = get_images_dir();
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut images = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("读取图片目录失败: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                let ext = ext.to_str().unwrap_or("").to_lowercase();
+                if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp") {
+                    if let Some(name) = path.file_name() {
+                        if let Some(name_str) = name.to_str() {
+                            images.push(name_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    images.sort();
+    Ok(images)
+}
+
+#[tauri::command]
+fn import_wallpaper(file_name: String, bytes: Vec<u8>) -> Result<(), String> {
+    let dir = get_images_dir();
+    if !dir.exists() {
+        fs::create_dir_all(&dir).map_err(|e| format!("创建 images 目录失败: {}", e))?;
+    }
+    let dest = dir.join(&file_name);
+    fs::write(&dest, &bytes).map_err(|e| format!("写入图片失败: {}", e))?;
+    Ok(())
+}
+
+fn internal_start_lock(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
     let breathing_light = settings.breathing_light;
-    drop(settings);
+    let bg_image_enabled = settings.bg_image_enabled;
+    let bg_image_file = settings.bg_image_file.clone();
+    let bg_image_show_dimmed = settings.bg_image_show_dimmed;
+    let bg_image_show_overlay = settings.bg_image_show_overlay;
+    let bg_image_opacity_overlay = settings.bg_image_opacity_overlay;
+    let bg_image_opacity_dimmed = settings.bg_image_opacity_dimmed;
+    let clock_visible = settings.clock_visible;
 
     hooks::set_lock_state(2);
 
     // 先杀掉可能残留的旧进程
-    kill_hook_process(&state);
+    let state = app.state::<AppState>();
+    if let Some(mut child) = state.hook_process.lock().unwrap().take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    drop(state);
 
     // 启动外部钩子 EXE，封禁 Win 键等系统快捷键
     let hook_path = get_hook_exe_path();
     if hook_path.exists() {
         match Command::new(&hook_path).spawn() {
             Ok(child) => {
+                let state = app.state::<AppState>();
                 *state.hook_process.lock().unwrap() = Some(child);
                 eprintln!("[LockScreen] 钩子进程已启动: {:?}", hook_path);
             }
@@ -178,17 +271,55 @@ fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<()
         eprintln!("[LockScreen] 钩子 EXE 未找到: {:?}", hook_path);
     }
 
+    let bg_image_url = if bg_image_enabled {
+        bg_image_file.as_ref().and_then(|filename| {
+            let img_path = get_images_dir().join(filename);
+            if img_path.exists() {
+                read_image_as_data_url(&img_path)
+            } else {
+                None
+            }
+        })
+    } else {
+        None
+    };
+
     let js = format!(
-        "window.__overlayOpacity = {}; window.__dimmedOpacity = {}; window.__breathingLight = {}; \
+        "window.__breathingLight = {}; \
+         window.__bgImageUrl = {}; \
+         window.__bgImageShowDimmed = {}; window.__bgImageShowOverlay = {}; \
+         window.__bgImageOpacityOverlay = {}; window.__bgImageOpacityDimmed = {}; \
+         window.__clockVisible = {}; \
          const el = document.getElementById('lock-overlay'); \
          if (el) {{ \
-             el.style.setProperty('--overlay-opacity', '{}'); \
-             el.style.setProperty('--dimmed-opacity', '{}'); \
              if (window.__breathingLight) {{ el.classList.add('breathing'); }} \
              else {{ el.classList.remove('breathing'); }} \
+             if (!window.__clockVisible) {{ el.classList.add('clock-hidden'); }} \
+             else {{ el.classList.remove('clock-hidden'); }} \
+             const bgImg = document.getElementById('lock-bg-img'); \
+             if (bgImg) {{ \
+                 if (window.__bgImageUrl) {{ \
+                     bgImg.src = window.__bgImageUrl; \
+                     bgImg.style.setProperty('--bg-image-opacity-overlay', String(window.__bgImageOpacityOverlay)); \
+                     bgImg.style.setProperty('--bg-image-opacity-dimmed', String(window.__bgImageOpacityDimmed)); \
+                     el.classList.add('has-bg-image'); \
+                     bgImg.classList.toggle('show', window.__bgImageShowOverlay); \
+                 }} else {{ \
+                     el.classList.remove('has-bg-image'); \
+                     bgImg.classList.remove('show'); \
+                 }} \
+             }} \
          }}",
-        overlay_opacity, dimmed_opacity, breathing_light,
-        overlay_opacity, dimmed_opacity
+        breathing_light,
+        match &bg_image_url {
+            Some(url) => format!("'{}'", url),
+            None => "null".to_string(),
+        },
+        if bg_image_show_dimmed { "true" } else { "false" },
+        if bg_image_show_overlay { "true" } else { "false" },
+        bg_image_opacity_overlay,
+        bg_image_opacity_dimmed,
+        if clock_visible { "true" } else { "false" }
     );
 
     if let Some(window) = app.get_webview_window("lock") {
@@ -205,7 +336,7 @@ fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<()
 
     let size = monitor.size();
 
-    let window = WebviewWindowBuilder::new(&app, "lock", WebviewUrl::App("/lock.html".into()))
+    let window = WebviewWindowBuilder::new(app, "lock", WebviewUrl::App("/lock.html".into()))
         .title("")
         .decorations(false)
         .transparent(true)
@@ -221,6 +352,50 @@ fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<()
     let _ = window.eval(&js);
 
     Ok(())
+}
+
+#[tauri::command]
+fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+    let settings = state.settings.lock().unwrap().clone();
+    internal_start_lock(&app, &settings)
+}
+
+fn register_global_hotkey(app: &tauri::AppHandle) {
+    std::thread::spawn(move || {
+        unsafe {
+            use winapi::um::winuser::{GetMessageW, RegisterHotKey, MSG};
+            const MOD_CONTROL: u32 = 0x0002;
+            const MOD_ALT: u32 = 0x0001;
+            const MOD_NOREPEAT: u32 = 0x4000;
+            const WM_HOTKEY: u32 = 0x0312;
+
+            let success = RegisterHotKey(
+                std::ptr::null_mut(),
+                1,
+                MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
+                0x4C, // 'L'
+            );
+            if success == 0 {
+                eprintln!("[LockScreen] 注册全局快捷键 Ctrl+Alt+L 失败");
+                return;
+            }
+            eprintln!("[LockScreen] 全局快捷键 Ctrl+Alt+L 已注册");
+
+            let mut msg: MSG = std::mem::zeroed();
+            while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
+                if msg.message == WM_HOTKEY && msg.wParam as i32 == 1 {
+                    eprintln!("[LockScreen] 全局快捷键触发锁屏");
+                    if let Some(app_handle) = APP_HANDLE.get() {
+                        let app_handle = app_handle.clone();
+                        let state = app_handle.state::<AppState>();
+                        let settings = state.settings.lock().unwrap().clone();
+                        drop(state);
+                        let _ = internal_start_lock(&app_handle, &settings);
+                    }
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -320,12 +495,17 @@ pub fn run() {
             start_lock_screen,
             unlock_screen,
             set_password_visible,
-            poll_mouse_click
+            poll_mouse_click,
+            list_background_images,
+            set_bg_image_file,
+            import_wallpaper
         ])
         .setup(|app| {
+            let _ = APP_HANDLE.set(app.handle().clone());
             setup_tray(app)?;
             setup_window_events(app)?;
             hooks::install_keyboard_hook();
+            register_global_hotkey(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

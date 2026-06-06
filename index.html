@@ -47,6 +47,20 @@
           <line x1="4" y1="4" x2="12" y2="12"/>
           <line x1="12" y1="4" x2="4" y2="12"/>
         </symbol>
+        <symbol id="icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </symbol>
+        <symbol id="icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </symbol>
+        <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </symbol>
       </defs>
     </svg>
 
@@ -165,6 +179,13 @@
               <div class="settings-list">
                 <div class="setting-item">
                   <div class="setting-info">
+                    <span class="setting-label">全局锁屏快捷键</span>
+                    <span class="setting-desc">按 Ctrl + Alt + L 快速锁屏</span>
+                  </div>
+                  <kbd class="shortcut-badge">Ctrl+Alt+L</kbd>
+                </div>
+                <div class="setting-item">
+                  <div class="setting-info">
                     <span class="setting-label">启动时自动隐藏窗口</span>
                     <span class="setting-desc">程序启动时自动隐藏到托盘</span>
                   </div>
@@ -172,26 +193,6 @@
                     <input type="checkbox" id="setting-auto-hide" />
                     <span class="toggle-slider"></span>
                   </label>
-                </div>
-                <div class="setting-item setting-slider-item">
-                  <div class="setting-info">
-                    <span class="setting-label">正常模式背景透明度</span>
-                    <span class="setting-desc">锁屏时密码框显示状态下的背景透明度</span>
-                  </div>
-                  <div class="slider-control">
-                    <input type="range" id="setting-overlay-opacity" min="0" max="100" value="55" />
-                    <span class="slider-value" id="value-overlay-opacity">55%</span>
-                  </div>
-                </div>
-                <div class="setting-item setting-slider-item">
-                  <div class="setting-info">
-                    <span class="setting-label">隐藏密码框模式透明度</span>
-                    <span class="setting-desc">按 ESC 隐藏密码框后的背景透明度</span>
-                  </div>
-                  <div class="slider-control">
-                    <input type="range" id="setting-dimmed-opacity" min="0" max="100" value="85" />
-                    <span class="slider-value" id="value-dimmed-opacity">85%</span>
-                  </div>
                 </div>
                 <div class="setting-item">
                   <div class="setting-info">
@@ -203,6 +204,92 @@
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
+
+                <!-- 锁屏外观卡片 -->
+                <div class="settings-card" id="wallpaper-card">
+                  <div class="settings-card-header">
+                    <svg class="settings-card-icon"><use href="#icon-image"/></svg>
+                    <span class="settings-card-title">锁屏外观</span>
+                  </div>
+                  <div class="settings-card-body">
+                    <div class="setting-item">
+                      <div class="setting-info">
+                        <span class="setting-label">显示时钟</span>
+                        <span class="setting-desc">锁屏时显示当前时间和日期</span>
+                      </div>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="setting-clock-visible" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="setting-item">
+                      <div class="setting-info">
+                        <span class="setting-label">背景图片</span>
+                        <span class="setting-desc">锁屏时显示背景图片</span>
+                      </div>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="setting-bg-image-enabled" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="setting-item" id="bg-image-select-item" style="display:none">
+                      <div class="setting-info">
+                        <span class="setting-label">选择图片</span>
+                        <span class="setting-desc">选择要显示的背景图片</span>
+                      </div>
+                      <select id="setting-bg-image-file" class="setting-select">
+                        <option value="">暂无图片</option>
+                      </select>
+                    </div>
+                    <div class="setting-item" id="bg-image-show-dimmed-item" style="display:none">
+                      <div class="setting-info">
+                        <span class="setting-label">隐藏密码框时显示</span>
+                        <span class="setting-desc">按 ESC 隐藏密码框后仍显示背景图片</span>
+                      </div>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="setting-bg-image-show-dimmed" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="setting-item" id="bg-image-show-overlay-item" style="display:none">
+                      <div class="setting-info">
+                        <span class="setting-label">显示密码框时显示</span>
+                        <span class="setting-desc">密码框可见时显示背景图片</span>
+                      </div>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="setting-bg-image-show-overlay" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="setting-item setting-slider-item" id="bg-image-opacity-overlay-item" style="display:none">
+                      <div class="setting-info">
+                        <span class="setting-label">显示密码框时图片透明度</span>
+                        <span class="setting-desc">密码框可见时背景图片的透明程度</span>
+                      </div>
+                      <div class="slider-control">
+                        <input type="range" id="setting-bg-image-opacity-overlay" min="10" max="100" value="100" />
+                        <span class="slider-value" id="value-bg-image-opacity-overlay">100%</span>
+                      </div>
+                    </div>
+                    <div class="setting-item setting-slider-item" id="bg-image-opacity-dimmed-item" style="display:none">
+                      <div class="setting-info">
+                        <span class="setting-label">隐藏密码框时图片透明度</span>
+                        <span class="setting-desc">密码框隐藏时背景图片的透明程度</span>
+                      </div>
+                      <div class="slider-control">
+                        <input type="range" id="setting-bg-image-opacity-dimmed" min="10" max="100" value="100" />
+                        <span class="slider-value" id="value-bg-image-opacity-dimmed">100%</span>
+                      </div>
+                    </div>
+                    <div class="wallpaper-import-row" id="wallpaper-import-row">
+                      <button id="btn-import-wallpaper" class="btn-import-wallpaper">
+                        <svg class="btn-import-icon"><use href="#icon-upload"/></svg>
+                        <span>导入图片</span>
+                      </button>
+                      <span class="import-hint">支持 png、jpg、bmp、gif、webp 格式</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -210,5 +297,7 @@
       </div>
     </div>
 
+    <!-- 图片导入对话框 -->
+    <input type="file" id="wallpaper-file-input" accept="image/png,image/jpeg,image/bmp,image/gif,image/webp" style="display:none" />
   </body>
 </html>
