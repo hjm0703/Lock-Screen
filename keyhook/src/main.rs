@@ -225,6 +225,7 @@ fn is_allowed_key(vk_code: u32) -> bool {
     match vk_code {
         0x08 | 0x0D | 0x20 | 0x2E | 0xBE => true, // Back, Enter, Space, Del, '.'
         0x1B => true, // ESC 键
+        0x14 => true, // Caps Lock
         0x30..=0x39 => true, // 数字
         0x41..=0x5A => true, // A-Z
         _ => false,

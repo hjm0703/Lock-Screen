@@ -10,13 +10,12 @@ use winapi::shared::minwindef::{LPARAM, LRESULT, WPARAM};
 use winapi::um::debugapi::OutputDebugStringA;
 use winapi::um::libloaderapi::GetModuleHandleW;
 use winapi::um::winuser::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
-    UnhookWindowsHookEx, KBDLLHOOKSTRUCT, KLF_ACTIVATE, LoadKeyboardLayoutW, MSG,
-    VK_BACK, VK_CAPITAL, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_INSERT,
-    VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_UP,
-    WH_KEYBOARD_LL, WH_MOUSE_LL,
-    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
+    CallNextHookEx, DispatchMessageW, GetKeyState, GetMessageW,
+    PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx,
+    KBDLLHOOKSTRUCT, KLF_ACTIVATE, LoadKeyboardLayoutW, MSG, VK_BACK, VK_CAPITAL, VK_DELETE,
+    VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_INSERT, VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN,
+    VK_RIGHT, VK_SPACE, VK_UP, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_QUIT,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
@@ -26,6 +25,7 @@ use winapi::um::winuser::{
 static LOCK_STATE: AtomicU8 = AtomicU8::new(0);
 static HOOK_INSTALLED: AtomicU8 = AtomicU8::new(0);
 static MOUSE_CLICKED: AtomicBool = AtomicBool::new(false);
+static HOOK_THREAD_ID: Mutex<Option<u32>> = Mutex::new(None);
 
 // 异步日志通道，避免在钩子回调中进行文件 I/O（会导致钩子超时）
 static LOG_SENDER: Mutex<Option<Sender<String>>> = Mutex::new(None);
@@ -120,6 +120,39 @@ pub fn poll_mouse_click() -> bool {
     MOUSE_CLICKED.swap(false, Ordering::SeqCst)
 }
 
+pub fn is_caps_lock_on() -> bool {
+    unsafe {
+        let state = GetKeyState(VK_CAPITAL as i32);
+        (state & 0x0001) != 0
+    }
+}
+
+pub fn turn_off_caps_lock() {
+    unsafe {
+        if is_caps_lock_on() {
+            use winapi::um::winuser::{SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP};
+            let mut inputs: [INPUT; 2] = std::mem::zeroed();
+
+            // 按下 Caps Lock
+            inputs[0].type_ = INPUT_KEYBOARD;
+            let ki = inputs[0].u.ki_mut();
+            ki.wVk = VK_CAPITAL as u16;
+            ki.wScan = 0x3A;
+            ki.dwFlags = 0;
+
+            // 释放 Caps Lock
+            inputs[1].type_ = INPUT_KEYBOARD;
+            let ki = inputs[1].u.ki_mut();
+            ki.wVk = VK_CAPITAL as u16;
+            ki.wScan = 0x3A;
+            ki.dwFlags = KEYEVENTF_KEYUP;
+
+            SendInput(2, inputs.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32);
+            log("Turned off Caps Lock via SendInput");
+        }
+    }
+}
+
 pub fn install_keyboard_hook() {
     if HOOK_INSTALLED.swap(1, Ordering::SeqCst) == 1 {
         log("install_keyboard_hook: already installed");
@@ -128,6 +161,8 @@ pub fn install_keyboard_hook() {
     log("install_keyboard_hook: starting thread");
 
     thread::spawn(|| {
+        let thread_id = unsafe { winapi::um::processthreadsapi::GetCurrentThreadId() };
+        *HOOK_THREAD_ID.lock().unwrap() = Some(thread_id);
         init_async_log();
 
         unsafe {
@@ -139,6 +174,7 @@ pub fn install_keyboard_hook() {
             if kb_hook.is_null() {
                 log("install_keyboard_hook: SetWindowsHookExW (keyboard) failed");
                 HOOK_INSTALLED.store(0, Ordering::SeqCst);
+                *HOOK_THREAD_ID.lock().unwrap() = None;
                 return;
             }
             log("install_keyboard_hook: keyboard hook installed successfully");
@@ -149,6 +185,7 @@ pub fn install_keyboard_hook() {
                 log("install_keyboard_hook: SetWindowsHookExW (mouse) failed");
                 let _ = UnhookWindowsHookEx(kb_hook);
                 HOOK_INSTALLED.store(0, Ordering::SeqCst);
+                *HOOK_THREAD_ID.lock().unwrap() = None;
                 return;
             }
             log("install_keyboard_hook: mouse hook installed successfully");
@@ -164,8 +201,23 @@ pub fn install_keyboard_hook() {
             let _ = UnhookWindowsHookEx(kb_hook);
             let _ = UnhookWindowsHookEx(ms_hook);
             HOOK_INSTALLED.store(0, Ordering::SeqCst);
+            *HOOK_THREAD_ID.lock().unwrap() = None;
         }
     });
+}
+
+pub fn uninstall_hooks() {
+    log("uninstall_hooks: requesting hook thread to quit");
+    if let Ok(guard) = HOOK_THREAD_ID.lock() {
+        if let Some(thread_id) = *guard {
+            unsafe {
+                let result = PostThreadMessageW(thread_id, WM_QUIT, 0, 0);
+                log(&format!("uninstall_hooks: PostThreadMessageW result = {}", result));
+            }
+        } else {
+            log("uninstall_hooks: no hook thread running");
+        }
+    }
 }
 
 fn is_allowed_key(vk: i32) -> bool {

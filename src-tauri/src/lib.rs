@@ -11,36 +11,36 @@ use std::sync::OnceLock;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, State, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
 struct AppSettings {
     password_hash: Option<String>,
+    password_hint: Option<String>,
     auto_hide: bool,
     breathing_light: bool,
-    bg_image_enabled: bool,
+    bg_mode: String,
     bg_image_file: Option<String>,
-    bg_image_show_dimmed: bool,
-    bg_image_show_overlay: bool,
     bg_image_opacity_overlay: f64,
     bg_image_opacity_dimmed: f64,
     clock_visible: bool,
+    welcome_screen: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             password_hash: None,
+            password_hint: None,
             auto_hide: false,
             breathing_light: true,
-            bg_image_enabled: false,
+            bg_mode: "none".to_string(),
             bg_image_file: None,
-            bg_image_show_dimmed: false,
-            bg_image_show_overlay: true,
             bg_image_opacity_overlay: 1.0,
             bg_image_opacity_dimmed: 1.0,
             clock_visible: true,
+            welcome_screen: false,
         }
     }
 }
@@ -130,6 +130,8 @@ fn set_password(
     old_password: Option<String>,
     state: State<AppState>,
 ) -> Result<(), String> {
+    hooks::turn_off_caps_lock();
+
     let mut settings = state.settings.lock().unwrap();
 
     // 如果已设置密码，需要验证原密码
@@ -148,7 +150,17 @@ fn set_password(
 }
 
 #[tauri::command]
+fn set_password_hint(hint: Option<String>, state: State<AppState>) -> Result<(), String> {
+    let mut settings = state.settings.lock().unwrap();
+    settings.password_hint = hint.filter(|s| !s.is_empty());
+    save_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn verify_password(password: String, state: State<AppState>) -> Result<bool, String> {
+    hooks::turn_off_caps_lock();
+
     let settings = state.settings.lock().unwrap();
     if let Some(ref hash) = settings.password_hash {
         let input_hash = hash_password(&password);
@@ -176,14 +188,20 @@ fn update_setting(key: String, value: f64, state: State<AppState>) -> Result<(),
     match key.as_str() {
         "auto_hide" => settings.auto_hide = value > 0.5,
         "breathing_light" => settings.breathing_light = value > 0.5,
-        "bg_image_enabled" => settings.bg_image_enabled = value > 0.5,
-        "bg_image_show_dimmed" => settings.bg_image_show_dimmed = value > 0.5,
-        "bg_image_show_overlay" => settings.bg_image_show_overlay = value > 0.5,
         "bg_image_opacity_overlay" => settings.bg_image_opacity_overlay = value.clamp(0.0, 1.0),
         "bg_image_opacity_dimmed" => settings.bg_image_opacity_dimmed = value.clamp(0.0, 1.0),
         "clock_visible" => settings.clock_visible = value > 0.5,
+        "welcome_screen" => settings.welcome_screen = value > 0.5,
         _ => return Err(format!("未知设置项: {}", key)),
     }
+    save_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_bg_mode(mode: String, state: State<AppState>) -> Result<(), String> {
+    let mut settings = state.settings.lock().unwrap();
+    settings.bg_mode = mode;
     save_settings(&settings)?;
     Ok(())
 }
@@ -234,15 +252,45 @@ fn import_wallpaper(file_name: String, bytes: Vec<u8>) -> Result<(), String> {
     Ok(())
 }
 
-fn internal_start_lock(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
+#[derive(Deserialize)]
+struct BingImageResponse {
+    images: Vec<BingImage>,
+}
+
+#[derive(Deserialize)]
+struct BingImage {
+    urlbase: String,
+}
+
+async fn fetch_bing_wallpaper_url() -> Option<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+
+    let resp = client
+        .get("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN")
+        .send()
+        .await
+        .ok()?;
+
+    let data: BingImageResponse = resp.json().await.ok()?;
+    let image = data.images.first()?;
+    Some(format!("https://www.bing.com{}_UHD.jpg", image.urlbase))
+}
+
+async fn internal_start_lock(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
     let breathing_light = settings.breathing_light;
-    let bg_image_enabled = settings.bg_image_enabled;
     let bg_image_file = settings.bg_image_file.clone();
-    let bg_image_show_dimmed = settings.bg_image_show_dimmed;
-    let bg_image_show_overlay = settings.bg_image_show_overlay;
     let bg_image_opacity_overlay = settings.bg_image_opacity_overlay;
     let bg_image_opacity_dimmed = settings.bg_image_opacity_dimmed;
     let clock_visible = settings.clock_visible;
+    let bg_mode = settings.bg_mode.clone();
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
     hooks::set_lock_state(2);
 
@@ -271,25 +319,41 @@ fn internal_start_lock(app: &tauri::AppHandle, settings: &AppSettings) -> Result
         eprintln!("[LockScreen] 钩子 EXE 未找到: {:?}", hook_path);
     }
 
-    let bg_image_url = if bg_image_enabled {
-        bg_image_file.as_ref().and_then(|filename| {
-            let img_path = get_images_dir().join(filename);
-            if img_path.exists() {
-                read_image_as_data_url(&img_path)
-            } else {
-                None
+    let mut bg_image_url = None;
+
+    match bg_mode.as_str() {
+        "custom" => {
+            bg_image_url = bg_image_file.as_ref().and_then(|filename| {
+                let img_path = get_images_dir().join(filename);
+                if img_path.exists() {
+                    read_image_as_data_url(&img_path)
+                } else {
+                    None
+                }
+            });
+        }
+        "bing" => {
+            if let Some(url) = fetch_bing_wallpaper_url().await {
+                bg_image_url = Some(url);
             }
-        })
-    } else {
-        None
-    };
+        }
+        _ => {}
+    }
+
+    let welcome_screen = settings.welcome_screen;
 
     let js = format!(
         "window.__breathingLight = {}; \
          window.__bgImageUrl = {}; \
-         window.__bgImageShowDimmed = {}; window.__bgImageShowOverlay = {}; \
          window.__bgImageOpacityOverlay = {}; window.__bgImageOpacityDimmed = {}; \
          window.__clockVisible = {}; \
+         window.__lockTimestamp = {}; \
+         window.__passwordHint = {}; \
+         window.__welcomeScreen = {}; \
+         const tsEl = document.getElementById('lock-timestamp'); \
+         if (tsEl) {{ tsEl.textContent = String(window.__lockTimestamp); }} \
+         const hintEl = document.getElementById('password-hint-display'); \
+         if (hintEl) {{ hintEl.textContent = window.__passwordHint || ''; }} \
          const el = document.getElementById('lock-overlay'); \
          if (el) {{ \
              if (window.__breathingLight) {{ el.classList.add('breathing'); }} \
@@ -303,29 +367,36 @@ fn internal_start_lock(app: &tauri::AppHandle, settings: &AppSettings) -> Result
                      bgImg.style.setProperty('--bg-image-opacity-overlay', String(window.__bgImageOpacityOverlay)); \
                      bgImg.style.setProperty('--bg-image-opacity-dimmed', String(window.__bgImageOpacityDimmed)); \
                      el.classList.add('has-bg-image'); \
-                     bgImg.classList.toggle('show', window.__bgImageShowOverlay); \
+                     bgImg.classList.add('show'); \
                  }} else {{ \
                      el.classList.remove('has-bg-image'); \
                      bgImg.classList.remove('show'); \
                  }} \
              }} \
-         }}",
+         }} \
+         const welcomeEl = document.getElementById('welcome-screen'); \
+         if (welcomeEl) {{ welcomeEl.classList.remove('active'); }}",
         breathing_light,
         match &bg_image_url {
             Some(url) => format!("'{}'", url),
             None => "null".to_string(),
         },
-        if bg_image_show_dimmed { "true" } else { "false" },
-        if bg_image_show_overlay { "true" } else { "false" },
         bg_image_opacity_overlay,
         bg_image_opacity_dimmed,
-        if clock_visible { "true" } else { "false" }
+        if clock_visible { "true" } else { "false" },
+        timestamp,
+        match &settings.password_hint {
+            Some(hint) => format!("'{}'", hint.replace('\\', "\\\\").replace('\'', "\\'")),
+            None => "null".to_string(),
+        },
+        if welcome_screen { "true" } else { "false" }
     );
 
     if let Some(window) = app.get_webview_window("lock") {
         let _ = window.eval(&js);
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.emit("lock-timestamp", timestamp);
         return Ok(());
     }
 
@@ -350,17 +421,21 @@ fn internal_start_lock(app: &tauri::AppHandle, settings: &AppSettings) -> Result
         .map_err(|e| format!("创建锁屏窗口失败: {}", e))?;
 
     let _ = window.eval(&js);
+    let _ = window.emit("lock-timestamp", timestamp);
 
     Ok(())
 }
 
 #[tauri::command]
-fn start_lock_screen(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+async fn start_lock_screen(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
-    internal_start_lock(&app, &settings)
+    if settings.password_hash.is_none() {
+        return Err("请先设置密码后再使用锁屏功能".to_string());
+    }
+    internal_start_lock(&app, &settings).await
 }
 
-fn register_global_hotkey(app: &tauri::AppHandle) {
+fn register_global_hotkey(_app: &tauri::AppHandle) {
     std::thread::spawn(move || {
         unsafe {
             use winapi::um::winuser::{GetMessageW, RegisterHotKey, MSG};
@@ -390,7 +465,12 @@ fn register_global_hotkey(app: &tauri::AppHandle) {
                         let state = app_handle.state::<AppState>();
                         let settings = state.settings.lock().unwrap().clone();
                         drop(state);
-                        let _ = internal_start_lock(&app_handle, &settings);
+                        if settings.password_hash.is_none() {
+                            eprintln!("[LockScreen] 未设置密码，拒绝锁屏");
+                            continue;
+                        }
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let _ = rt.block_on(internal_start_lock(&app_handle, &settings));
                     }
                 }
             }
@@ -403,6 +483,11 @@ fn poll_mouse_click() -> bool {
     hooks::poll_mouse_click()
 }
 
+#[tauri::command]
+fn ensure_caps_lock_off() {
+    hooks::turn_off_caps_lock();
+}
+
 fn kill_hook_process(state: &State<AppState>) {
     if let Some(mut child) = state.hook_process.lock().unwrap().take() {
         eprintln!("[LockScreen] 正在终止钩子进程...");
@@ -410,6 +495,96 @@ fn kill_hook_process(state: &State<AppState>) {
         let _ = child.wait();
         eprintln!("[LockScreen] 钩子进程已终止");
     }
+}
+
+#[cfg(windows)]
+fn cleanup_duplicate_processes() {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::processthreadsapi::{GetCurrentProcessId, OpenProcess};
+    use winapi::um::tlhelp32::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use winapi::um::winnt::PROCESS_TERMINATE;
+
+    let current_pid = unsafe { GetCurrentProcessId() };
+
+    // 获取当前进程名
+    let current_exe = std::env::current_exe().unwrap_or_default();
+    let current_name = current_exe
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("lock-screen.exe")
+        .to_lowercase();
+
+    eprintln!("[LockScreen] 当前进程名: {}, PID: {}", current_name, current_pid);
+
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot.is_null() {
+            eprintln!("[LockScreen] CreateToolhelp32Snapshot 失败");
+            return;
+        }
+
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as DWORD;
+
+        if Process32FirstW(snapshot, &mut entry) == TRUE {
+            loop {
+                let pid = entry.th32ProcessID;
+                let exe_file = OsString::from_wide(
+                    &entry.szExeFile[..entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(260)]
+                );
+                let exe_name = exe_file.to_string_lossy().to_lowercase();
+
+                // 终止同名进程（排除当前进程）
+                if exe_name == current_name && pid != current_pid {
+                    eprintln!("[LockScreen] 发现同名进程: {} (PID: {})，准备终止", exe_name, pid);
+                    let handle = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+                    if !handle.is_null() {
+                        let result = winapi::um::processthreadsapi::TerminateProcess(handle, 1);
+                        if result != 0 {
+                            eprintln!("[LockScreen] 已终止同名进程 PID: {}", pid);
+                        } else {
+                            eprintln!("[LockScreen] 终止同名进程 PID: {} 失败", pid);
+                        }
+                        CloseHandle(handle);
+                    }
+                }
+
+                // 终止所有 keyhook.exe
+                if exe_name == "keyhook.exe" {
+                    eprintln!("[LockScreen] 发现 keyhook.exe (PID: {})，准备终止", pid);
+                    let handle = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+                    if !handle.is_null() {
+                        let result = winapi::um::processthreadsapi::TerminateProcess(handle, 1);
+                        if result != 0 {
+                            eprintln!("[LockScreen] 已终止 keyhook.exe PID: {}", pid);
+                        } else {
+                            eprintln!("[LockScreen] 终止 keyhook.exe PID: {} 失败", pid);
+                        }
+                        CloseHandle(handle);
+                    }
+                }
+
+                if Process32NextW(snapshot, &mut entry) != TRUE {
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(snapshot);
+    }
+
+    eprintln!("[LockScreen] 进程清理完成");
+}
+
+#[cfg(not(windows))]
+fn cleanup_duplicate_processes() {
+    // 非 Windows 平台暂不支持
 }
 
 #[tauri::command]
@@ -442,7 +617,10 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => toggle_window_visibility(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                hooks::uninstall_hooks();
+                app.exit(0);
+            }
             _ => {}
         })
         .build(app)?;
@@ -477,17 +655,21 @@ fn setup_window_events(app: &tauri::App) -> Result<(), Box<dyn std::error::Error
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    cleanup_duplicate_processes();
+
     let settings = load_settings();
     let app_state = AppState {
         settings: Mutex::new(settings),
         hook_process: Mutex::new(None),
     };
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             set_password,
+            set_password_hint,
+            set_bg_mode,
             verify_password,
             has_password,
             get_settings,
@@ -498,7 +680,8 @@ pub fn run() {
             poll_mouse_click,
             list_background_images,
             set_bg_image_file,
-            import_wallpaper
+            import_wallpaper,
+            ensure_caps_lock_off
         ])
         .setup(|app| {
             let _ = APP_HANDLE.set(app.handle().clone());
@@ -508,6 +691,12 @@ pub fn run() {
             register_global_hotkey(app.handle());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            hooks::uninstall_hooks();
+        }
+    });
 }

@@ -95,16 +95,17 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   flex-direction: column;
   align-items: center;
   margin-bottom: 60px;
+  margin-top: -240px;
   animation: clockFadeIn 0.6s ease;
 }
 
 .clock-time {
-  font-size: 96px;
-  font-weight: 200;
+  font-size: 120px;
+  font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
-  letter-spacing: 6px;
+  letter-spacing: 4px;
   line-height: 1;
-  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
   font-variant-numeric: tabular-nums;
 }
 
@@ -122,15 +123,15 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   flex-direction: column;
   align-items: center;
   padding: 40px 52px 36px;
-  background-color: rgba(30, 30, 40, 0.72);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  background-color: transparent;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   min-width: 360px;
   animation: formSlideUp 0.5s ease;
   transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.lock-form-section:not(.hidden) {
+  animation: formSlideUp 0.5s ease;
 }
 
 .lock-form-section.hidden {
@@ -161,52 +162,43 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   }
 }
 
-.lock-icon {
+.pin-icon {
   width: 40px;
   height: 40px;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 16px;
-}
-
-.lock-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
-  margin-bottom: 6px;
-}
-
-.lock-desc {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-bottom: 24px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 20px;
 }
 
 .lock-form {
   width: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 0;
 }
 
 .lock-form input {
-  width: 100%;
-  padding: 12px 16px;
+  flex: 1;
+  padding: 0 14px;
   font-size: 15px;
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.1);
+  height: 40px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+  background-color: rgba(0, 0, 0, 0.35);
   color: rgba(255, 255, 255, 0.95);
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease;
   font-family: inherit;
-  text-align: center;
+  text-align: left;
   letter-spacing: 2px;
   outline: none;
 }
 
 .lock-form input:focus {
-  border-color: rgba(79, 143, 247, 0.7);
-  background-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 0 3px rgba(79, 143, 247, 0.2);
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+.lock-form input:focus + .btn-unlock {
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 .lock-form input::placeholder {
@@ -215,26 +207,33 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
 }
 
 .btn-unlock {
-  width: 100%;
-  padding: 12px 20px;
-  font-size: 15px;
-  font-weight: 500;
-  font-family: inherit;
-  border: none;
-  border-radius: 12px;
-  background-color: rgba(79, 143, 247, 0.85);
-  color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0 4px 4px 0;
+  background-color: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-unlock svg {
+  width: 18px;
+  height: 18px;
 }
 
 .btn-unlock:hover {
-  background-color: rgba(79, 143, 247, 1);
-  transform: translateY(-1px);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .btn-unlock:active {
-  transform: translateY(0);
+  background-color: rgba(255, 255, 255, 0.15);
 }
 
 .unlock-message {
@@ -245,9 +244,45 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   min-height: 20px;
 }
 
-.click-hint {
+.password-hint {
   text-align: center;
   margin-top: 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  min-height: 18px;
+}
+
+.password-hint:empty {
+  display: none;
+}
+
+.caps-hint {
+  display: none;
+  text-align: center;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #fbbf24;
+  animation: capsHintFadeIn 0.2s ease;
+}
+
+.caps-hint.visible {
+  display: block;
+}
+
+@keyframes capsHintFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.click-hint {
+  text-align: center;
+  margin-top: 6px;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.35);
   opacity: 0;
@@ -263,6 +298,109 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   0% { opacity: 1; }
   70% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* ===== 解锁欢迎画面 ===== */
+.welcome-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.92);
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.welcome-screen.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.welcome-text {
+  font-size: 48px;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 8px;
+  animation: welcomeFadeIn 0.5s ease forwards;
+}
+
+.welcome-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 20px;
+}
+
+.spinner-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.7);
+  animation: spinnerBounce 1.4s ease-in-out infinite both;
+}
+
+.spinner-dot:nth-child(1) { animation-delay: -0.32s; }
+.spinner-dot:nth-child(2) { animation-delay: -0.24s; }
+.spinner-dot:nth-child(3) { animation-delay: -0.16s; }
+.spinner-dot:nth-child(4) { animation-delay: -0.08s; }
+.spinner-dot:nth-child(5) { animation-delay: 0s; }
+
+@keyframes welcomeFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spinnerBounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1.2); opacity: 1; }
+}
+
+/* ===== 密码错误抖动 ===== */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-10px); }
+  30% { transform: translateX(8px); }
+  45% { transform: translateX(-6px); }
+  60% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+  90% { transform: translateX(1px); }
+}
+
+.lock-form.shake {
+  animation: shake 0.4s ease;
+}
+
+/* ===== 时间戳 ===== */
+.lock-timestamp {
+  position: absolute;
+  bottom: 24px;
+  right: 28px;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: "Consolas", "Courier New", monospace;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+#lock-overlay:not(.dimmed) .lock-timestamp {
+  opacity: 1;
 }
 
 /* ===== 呼吸灯 ===== */

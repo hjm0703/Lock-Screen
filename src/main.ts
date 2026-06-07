@@ -25,9 +25,6 @@ function navigateTo(page: string): void {
   if (page === "password") {
     updatePasswordForm().catch(() => {});
   }
-  if (page === "lock") {
-    updateLockPage().catch(() => {});
-  }
 }
 
 function showMessage(el: HTMLElement | null, text: string, type: "success" | "error"): void {
@@ -142,19 +139,26 @@ async function loadBackgroundImages(): Promise<void> {
   }
 }
 
-function updateBgImageUI(enabled: boolean): void {
+function updateBgImageUI(bgMode: string): void {
   const selectItem = document.getElementById("bg-image-select-item");
-  const dimmedItem = document.getElementById("bg-image-show-dimmed-item");
-  const overlayItem = document.getElementById("bg-image-show-overlay-item");
   const opacityOverlayItem = document.getElementById("bg-image-opacity-overlay-item");
   const opacityDimmedItem = document.getElementById("bg-image-opacity-dimmed-item");
-  const display = enabled ? "flex" : "none";
-  if (selectItem) selectItem.style.display = display;
-  if (dimmedItem) dimmedItem.style.display = display;
-  if (overlayItem) overlayItem.style.display = display;
-  if (opacityOverlayItem) opacityOverlayItem.style.display = display;
-  if (opacityDimmedItem) opacityDimmedItem.style.display = display;
-  if (enabled) {
+  const importRow = document.getElementById("wallpaper-import-row");
+
+  const isCustom = bgMode === "custom";
+  const hasBg = isCustom || bgMode === "bing";
+
+  // 选择图片和导入按钮只在自定义背景图片启用时显示
+  const selectDisplay = isCustom ? "flex" : "none";
+  if (selectItem) selectItem.style.display = selectDisplay;
+  if (importRow) importRow.style.display = selectDisplay;
+
+  // 透明度滑块在有背景图（Bing 或自定义）时显示
+  const controlDisplay = hasBg ? "flex" : "none";
+  if (opacityOverlayItem) opacityOverlayItem.style.display = controlDisplay;
+  if (opacityDimmedItem) opacityDimmedItem.style.display = controlDisplay;
+
+  if (isCustom) {
     loadBackgroundImages();
   }
 }
@@ -166,9 +170,7 @@ async function loadSettings(): Promise<void> {
     const autoHideEl = document.getElementById("setting-auto-hide") as HTMLInputElement;
     const breathingEl = document.getElementById("setting-breathing-light") as HTMLInputElement;
     const clockVisibleEl = document.getElementById("setting-clock-visible") as HTMLInputElement;
-    const bgImageEnabledEl = document.getElementById("setting-bg-image-enabled") as HTMLInputElement;
-    const bgImageShowDimmedEl = document.getElementById("setting-bg-image-show-dimmed") as HTMLInputElement;
-    const bgImageShowOverlayEl = document.getElementById("setting-bg-image-show-overlay") as HTMLInputElement;
+    const welcomeScreenEl = document.getElementById("setting-welcome-screen") as HTMLInputElement;
     const bgImageOpacityOverlayEl = document.getElementById("setting-bg-image-opacity-overlay") as HTMLInputElement;
     const bgImageOpacityOverlayValEl = document.getElementById("value-bg-image-opacity-overlay");
     const bgImageOpacityDimmedEl = document.getElementById("setting-bg-image-opacity-dimmed") as HTMLInputElement;
@@ -178,13 +180,13 @@ async function loadSettings(): Promise<void> {
     if (autoHideEl) autoHideEl.checked = Boolean(settings.auto_hide);
     if (breathingEl) breathingEl.checked = Boolean(settings.breathing_light);
     if (clockVisibleEl) clockVisibleEl.checked = Boolean(settings.clock_visible ?? true);
-    if (bgImageEnabledEl) {
-      const enabled = Boolean(settings.bg_image_enabled);
-      bgImageEnabledEl.checked = enabled;
-      updateBgImageUI(enabled);
-    }
-    if (bgImageShowDimmedEl) bgImageShowDimmedEl.checked = Boolean(settings.bg_image_show_dimmed);
-    if (bgImageShowOverlayEl) bgImageShowOverlayEl.checked = Boolean(settings.bg_image_show_overlay ?? true);
+    if (welcomeScreenEl) welcomeScreenEl.checked = Boolean(settings.welcome_screen);
+
+    const bgMode = (settings.bg_mode as string) || "none";
+    const radioEl = document.querySelector(`input[name="bg-mode"][value="${bgMode}"]`) as HTMLInputElement | null;
+    if (radioEl) radioEl.checked = true;
+    updateBgImageUI(bgMode);
+
     if (bgImageOpacityOverlayEl) {
       const stored = (settings.bg_image_opacity_overlay as number) ?? 1.0;
       const v = Math.round((1 - stored) * 100);
@@ -201,6 +203,10 @@ async function loadSettings(): Promise<void> {
       const file = settings.bg_image_file as string | null;
       if (file) bgImageFileEl.value = file;
     }
+    const passwordHintEl = document.getElementById("setting-password-hint") as HTMLInputElement;
+    if (passwordHintEl) {
+      passwordHintEl.value = (settings.password_hint as string) || "";
+    }
   } catch {
     // ignore load errors
   }
@@ -208,12 +214,11 @@ async function loadSettings(): Promise<void> {
 
 const NEED_RESTART_KEYS = [
   "breathing_light",
-  "bg_image_enabled",
-  "bg_image_show_dimmed",
-  "bg_image_show_overlay",
+  "bg_mode",
   "bg_image_opacity_overlay",
   "bg_image_opacity_dimmed",
   "clock_visible",
+  "welcome_screen",
 ];
 
 function showRestartBanner(): void {
@@ -245,14 +250,8 @@ function handleSliderChange(key: string, value: number): void {
     });
 }
 
-async function updateLockPage(): Promise<void> {
-  const msgEl = document.getElementById("lock-message");
-  const pwdEl = document.getElementById("lock-password") as HTMLInputElement;
-  if (msgEl) {
-    msgEl.textContent = "";
-    msgEl.className = "message";
-  }
-  if (pwdEl) pwdEl.value = "";
+async function handleStartLock(): Promise<void> {
+  const msgEl = document.getElementById("home-lock-message");
 
   try {
     const hasPwd = await invoke("has_password") as boolean;
@@ -261,41 +260,9 @@ async function updateLockPage(): Promise<void> {
         msgEl.textContent = "请先设置密码后再使用锁屏功能";
         msgEl.className = "message error";
       }
+      return;
     }
-  } catch {
-    // ignore
-  }
-}
-
-async function handleStartLock(): Promise<void> {
-  const pwdEl = document.getElementById("lock-password") as HTMLInputElement;
-  const msgEl = document.getElementById("lock-message");
-  const pwd = pwdEl?.value || "";
-
-  if (!pwd) {
-    if (msgEl) {
-      msgEl.textContent = "请输入密码";
-      msgEl.className = "message error";
-    }
-    return;
-  }
-
-  try {
-    const valid = await invoke("verify_password", { password: pwd }) as boolean;
-    if (valid) {
-      if (msgEl) {
-        msgEl.textContent = "";
-        msgEl.className = "message";
-      }
-      if (pwdEl) pwdEl.value = "";
-      await invoke("start_lock_screen");
-    } else {
-      if (msgEl) {
-        msgEl.textContent = "密码错误";
-        msgEl.className = "message error";
-      }
-      if (pwdEl) pwdEl.value = "";
-    }
+    await invoke("start_lock_screen");
   } catch (err: unknown) {
     if (msgEl) {
       msgEl.textContent = `启动失败: ${err as string}`;
@@ -304,8 +271,41 @@ async function handleStartLock(): Promise<void> {
   }
 }
 
+function setupCapsLockHint(inputId: string, hintId: string): void {
+  const input = document.getElementById(inputId) as HTMLInputElement;
+  const hint = document.getElementById(hintId);
+  if (!input || !hint) return;
+
+  input.addEventListener("focus", () => {
+    void invoke("ensure_caps_lock_off");
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.getModifierState("CapsLock")) {
+      hint.classList.add("visible");
+    } else {
+      hint.classList.remove("visible");
+    }
+  });
+
+  input.addEventListener("keyup", (e) => {
+    if (!e.getModifierState("CapsLock")) {
+      hint.classList.remove("visible");
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    hint.classList.remove("visible");
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   loadSettings().catch(() => {});
+
+  // 大写锁定提示
+  setupCapsLockHint("old-password", "old-caps-hint");
+  setupCapsLockHint("new-password", "new-caps-hint");
+  setupCapsLockHint("confirm-password", "confirm-caps-hint");
 
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", () => {
@@ -357,31 +357,28 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 背景图片开关
-  const bgImageEnabledEl = document.getElementById("setting-bg-image-enabled");
-  if (bgImageEnabledEl) {
-    bgImageEnabledEl.addEventListener("change", (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      handleToggleSetting("bg_image_enabled", checked);
-      updateBgImageUI(checked);
+  // 解锁欢迎画面
+  const welcomeScreenEl = document.getElementById("setting-welcome-screen");
+  if (welcomeScreenEl) {
+    welcomeScreenEl.addEventListener("change", (e) => {
+      handleToggleSetting("welcome_screen", (e.target as HTMLInputElement).checked);
     });
   }
 
-  // 隐藏密码框时显示背景
-  const bgImageShowDimmedEl = document.getElementById("setting-bg-image-show-dimmed");
-  if (bgImageShowDimmedEl) {
-    bgImageShowDimmedEl.addEventListener("change", (e) => {
-      handleToggleSetting("bg_image_show_dimmed", (e.target as HTMLInputElement).checked);
+  // 背景模式单选
+  document.querySelectorAll('input[name="bg-mode"]').forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+      const mode = (e.target as HTMLInputElement).value;
+      invoke("set_bg_mode", { mode })
+        .then(() => {
+          if (NEED_RESTART_KEYS.includes("bg_mode")) {
+            showRestartBanner();
+          }
+        })
+        .catch(() => {});
+      updateBgImageUI(mode);
     });
-  }
-
-  // 显示密码框时显示背景
-  const bgImageShowOverlayEl = document.getElementById("setting-bg-image-show-overlay");
-  if (bgImageShowOverlayEl) {
-    bgImageShowOverlayEl.addEventListener("change", (e) => {
-      handleToggleSetting("bg_image_show_overlay", (e.target as HTMLInputElement).checked);
-    });
-  }
+  });
 
   // 选择背景图片
   const bgImageFileEl = document.getElementById("setting-bg-image-file");
@@ -421,19 +418,19 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  const startLockBtn = document.getElementById("btn-start-lock");
-  if (startLockBtn) {
-    startLockBtn.addEventListener("click", () => {
+  const homeLockBtn = document.getElementById("btn-home-lock");
+  if (homeLockBtn) {
+    homeLockBtn.addEventListener("click", () => {
       void handleStartLock();
     });
   }
 
-  const lockPwdEl = document.getElementById("lock-password") as HTMLInputElement;
-  if (lockPwdEl) {
-    lockPwdEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        void handleStartLock();
-      }
+  // 密码提示输入框 - 失焦时自动保存
+  const passwordHintEl = document.getElementById("setting-password-hint") as HTMLInputElement;
+  if (passwordHintEl) {
+    passwordHintEl.addEventListener("blur", () => {
+      const val = passwordHintEl.value || null;
+      invoke("set_password_hint", { hint: val }).catch(() => {});
     });
   }
 

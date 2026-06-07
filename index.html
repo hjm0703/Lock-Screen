@@ -91,10 +91,6 @@
               <svg class="nav-icon-svg"><use href="#icon-key"/></svg>
               <span class="nav-text">设置密码</span>
             </li>
-            <li class="nav-item" data-page="lock">
-              <svg class="nav-icon-svg"><use href="#icon-play"/></svg>
-              <span class="nav-text">开始锁屏</span>
-            </li>
             <li class="nav-item" data-page="settings">
               <svg class="nav-icon-svg"><use href="#icon-settings"/></svg>
               <span class="nav-text">通用设置</span>
@@ -123,6 +119,13 @@
                   </div>
                 </div>
               </div>
+              <div class="home-lock-section">
+                <button id="btn-home-lock" class="btn btn-primary btn-lock">
+                  <svg class="btn-icon"><use href="#icon-lock"/></svg>
+                  <span>立即锁屏</span>
+                </button>
+                <div id="home-lock-message" class="message"></div>
+              </div>
             </div>
           </section>
 
@@ -134,33 +137,20 @@
                 <div class="form-group" id="old-password-group" style="display:none">
                   <label for="old-password">原密码</label>
                   <input id="old-password" type="password" placeholder="请输入原密码" />
+                  <div class="caps-hint" id="old-caps-hint">大写锁定已开启，密码区分大小写</div>
                 </div>
                 <div class="form-group">
                   <label for="new-password">新密码</label>
                   <input id="new-password" type="password" placeholder="请输入密码" />
+                  <div class="caps-hint" id="new-caps-hint">大写锁定已开启，密码区分大小写</div>
                 </div>
                 <div class="form-group">
                   <label for="confirm-password">确认密码</label>
                   <input id="confirm-password" type="password" placeholder="请再次输入密码" />
+                  <div class="caps-hint" id="confirm-caps-hint">大写锁定已开启，密码区分大小写</div>
                 </div>
                 <div id="password-message" class="message"></div>
                 <button id="btn-save-password" class="btn btn-primary">保存密码</button>
-              </div>
-            </div>
-          </section>
-
-          <section id="page-lock" class="page">
-            <div class="page-content lock-page">
-              <svg class="icon-welcome"><use href="#icon-lock"/></svg>
-              <h2 class="page-title">开始锁屏</h2>
-              <p class="page-desc">锁定屏幕以保护您的隐私，解锁需要输入密码</p>
-              <div class="lock-start-form">
-                <div class="form-group">
-                  <label for="lock-password">密码验证</label>
-                  <input id="lock-password" type="password" placeholder="请输入当前密码以开始锁屏" />
-                </div>
-                <div id="lock-message" class="message"></div>
-                <button id="btn-start-lock" class="btn btn-primary">立即锁屏</button>
               </div>
             </div>
           </section>
@@ -194,6 +184,13 @@
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
+                <div class="setting-item setting-input-item">
+                  <div class="setting-info">
+                    <span class="setting-label">密码提示</span>
+                    <span class="setting-desc">锁屏时显示在密码框下方，留空则不显示</span>
+                  </div>
+                  <input type="text" id="setting-password-hint" class="setting-text-input" placeholder="输入提示文字" />
+                </div>
                 <div class="setting-item">
                   <div class="setting-info">
                     <span class="setting-label">呼吸灯效果</span>
@@ -213,24 +210,44 @@
                   </div>
                   <div class="settings-card-body">
                     <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">显示时钟</span>
+                    <span class="setting-desc">锁屏时显示当前时间和日期</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="setting-clock-visible" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">解锁欢迎画面</span>
+                    <span class="setting-desc">解锁后显示欢迎动画再进入桌面</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="setting-welcome-screen" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                    <div class="setting-item setting-radio-item">
                       <div class="setting-info">
-                        <span class="setting-label">显示时钟</span>
-                        <span class="setting-desc">锁屏时显示当前时间和日期</span>
+                        <span class="setting-label">背景模式</span>
+                        <span class="setting-desc">选择锁屏时的背景来源</span>
                       </div>
-                      <label class="toggle-switch">
-                        <input type="checkbox" id="setting-clock-visible" checked />
-                        <span class="toggle-slider"></span>
-                      </label>
-                    </div>
-                    <div class="setting-item">
-                      <div class="setting-info">
-                        <span class="setting-label">背景图片</span>
-                        <span class="setting-desc">锁屏时显示背景图片</span>
+                      <div class="radio-group">
+                        <label class="radio-label">
+                          <input type="radio" name="bg-mode" value="none" checked />
+                          <span>无背景图</span>
+                        </label>
+                        <label class="radio-label">
+                          <input type="radio" name="bg-mode" value="bing" />
+                          <span>Bing 每日壁纸</span>
+                        </label>
+                        <label class="radio-label">
+                          <input type="radio" name="bg-mode" value="custom" />
+                          <span>自定义图片</span>
+                        </label>
                       </div>
-                      <label class="toggle-switch">
-                        <input type="checkbox" id="setting-bg-image-enabled" />
-                        <span class="toggle-slider"></span>
-                      </label>
                     </div>
                     <div class="setting-item" id="bg-image-select-item" style="display:none">
                       <div class="setting-info">
@@ -241,33 +258,14 @@
                         <option value="">暂无图片</option>
                       </select>
                     </div>
-                    <div class="setting-item" id="bg-image-show-dimmed-item" style="display:none">
-                      <div class="setting-info">
-                        <span class="setting-label">隐藏密码框时显示</span>
-                        <span class="setting-desc">按 ESC 隐藏密码框后仍显示背景图片</span>
-                      </div>
-                      <label class="toggle-switch">
-                        <input type="checkbox" id="setting-bg-image-show-dimmed" />
-                        <span class="toggle-slider"></span>
-                      </label>
-                    </div>
-                    <div class="setting-item" id="bg-image-show-overlay-item" style="display:none">
-                      <div class="setting-info">
-                        <span class="setting-label">显示密码框时显示</span>
-                        <span class="setting-desc">密码框可见时显示背景图片</span>
-                      </div>
-                      <label class="toggle-switch">
-                        <input type="checkbox" id="setting-bg-image-show-overlay" checked />
-                        <span class="toggle-slider"></span>
-                      </label>
-                    </div>
+
                     <div class="setting-item setting-slider-item" id="bg-image-opacity-overlay-item" style="display:none">
                       <div class="setting-info">
                         <span class="setting-label">显示密码框时图片透明度</span>
                         <span class="setting-desc">密码框可见时背景图片的透明程度</span>
                       </div>
                       <div class="slider-control">
-                        <input type="range" id="setting-bg-image-opacity-overlay" min="10" max="100" value="100" />
+                        <input type="range" id="setting-bg-image-opacity-overlay" min="0" max="100" value="100" />
                         <span class="slider-value" id="value-bg-image-opacity-overlay">100%</span>
                       </div>
                     </div>
@@ -277,7 +275,7 @@
                         <span class="setting-desc">密码框隐藏时背景图片的透明程度</span>
                       </div>
                       <div class="slider-control">
-                        <input type="range" id="setting-bg-image-opacity-dimmed" min="10" max="100" value="100" />
+                        <input type="range" id="setting-bg-image-opacity-dimmed" min="0" max="100" value="100" />
                         <span class="slider-value" id="value-bg-image-opacity-dimmed">100%</span>
                       </div>
                     </div>

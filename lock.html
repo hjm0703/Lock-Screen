@@ -9,6 +9,21 @@
   </head>
   <body>
     <img id="lock-bg-img" class="lock-bg-img" alt="" />
+
+    <!-- 解锁欢迎画面 -->
+    <div id="welcome-screen" class="welcome-screen">
+      <div class="welcome-content">
+        <div class="welcome-text">欢迎</div>
+        <div class="welcome-spinner">
+          <div class="spinner-dot"></div>
+          <div class="spinner-dot"></div>
+          <div class="spinner-dot"></div>
+          <div class="spinner-dot"></div>
+          <div class="spinner-dot"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="lock-overlay">
       <!-- 时钟区域 -->
       <div class="clock-section">
@@ -17,13 +32,19 @@
       </div>
 
       <!-- 锁屏交互区域 -->
-      <div class="lock-form-section">
-        <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      <div class="lock-form-section hidden">
+        <svg class="pin-icon" viewBox="0 0 60 72" fill="none">
+          <circle cx="30" cy="8" r="3" fill="currentColor"/>
+          <circle cx="14" cy="28" r="3" fill="currentColor"/>
+          <circle cx="30" cy="28" r="3" fill="currentColor"/>
+          <circle cx="46" cy="28" r="3" fill="currentColor"/>
+          <circle cx="14" cy="44" r="3" fill="currentColor"/>
+          <circle cx="30" cy="44" r="3" fill="currentColor"/>
+          <circle cx="46" cy="44" r="3" fill="currentColor"/>
+          <circle cx="14" cy="60" r="3" fill="currentColor"/>
+          <circle cx="30" cy="60" r="3" fill="currentColor"/>
+          <circle cx="46" cy="60" r="3" fill="currentColor"/>
         </svg>
-        <h2 class="lock-title">屏幕已锁定</h2>
-        <p class="lock-desc">请输入密码解锁 · 按 Esc 隐藏密码框</p>
         <div class="lock-form">
           <input
             id="unlock-password"
@@ -31,13 +52,20 @@
             placeholder="输入密码"
             autocomplete="off"
           />
-          <button id="btn-unlock" class="btn-unlock">解锁</button>
+          <button id="btn-unlock" class="btn-unlock" aria-label="解锁">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
         </div>
+        <div class="password-hint" id="password-hint-display"></div>
+        <div class="caps-hint" id="unlock-caps-hint">大写锁定已开启</div>
         <div id="unlock-message" class="unlock-message"></div>
         <div class="click-hint" id="click-hint">鼠标点击无效 · 请按 Enter 键解锁</div>
       </div>
 
       <div class="breathing-indicator"></div>
+      <div class="lock-timestamp" id="lock-timestamp"></div>
     </div>
   </body>
 </html>

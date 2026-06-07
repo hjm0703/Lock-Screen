@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 let passwordVisible = true;
 
@@ -38,20 +39,17 @@ async function initLockScreen(): Promise<void> {
 
   // 开始轮询鼠标点击
   startClickPolling();
+
+  // 保持焦点在密码输入框
+  startFocusGuard();
 }
 
-function updateBgImageVisibility(isPasswordVisible: boolean): void {
+function updateBgImageVisibility(_isPasswordVisible: boolean): void {
   const bgImg = document.getElementById("lock-bg-img") as HTMLImageElement;
   if (!bgImg || !bgImg.src) return;
 
-  const showDimmed = (window as unknown as Record<string, boolean>).__bgImageShowDimmed ?? false;
-  const showOverlay = (window as unknown as Record<string, boolean>).__bgImageShowOverlay ?? true;
-
-  if (isPasswordVisible) {
-    bgImg.classList.toggle("show", showOverlay);
-  } else {
-    bgImg.classList.toggle("show", showDimmed);
-  }
+  // 壁纸始终显示
+  bgImg.classList.add("show");
 }
 
 function startClickPolling(): void {
@@ -72,6 +70,27 @@ function startClickPolling(): void {
   }, 200);
 }
 
+function startFocusGuard(): void {
+  const pwdEl = document.getElementById("unlock-password") as HTMLInputElement;
+  if (!pwdEl) return;
+
+  // 密码框失去焦点时，如果密码框区域可见则重新聚焦
+  pwdEl.addEventListener("blur", () => {
+    const container = document.querySelector(".lock-form-section");
+    if (container && !container.classList.contains("hidden")) {
+      setTimeout(() => pwdEl.focus(), 10);
+    }
+  });
+
+  // 定时检查焦点，防止被其他方式移走
+  setInterval(() => {
+    const container = document.querySelector(".lock-form-section");
+    if (container && !container.classList.contains("hidden") && document.activeElement !== pwdEl) {
+      pwdEl.focus();
+    }
+  }, 300);
+}
+
 function showMessage(text: string): void {
   const el = document.getElementById("unlock-message");
   if (el) el.textContent = text;
@@ -86,6 +105,7 @@ function applySettings(): void {
   const bgImageUrl = (window as unknown as Record<string, string | null>).__bgImageUrl ?? null;
   const bgImageOpacityOverlay = (window as unknown as Record<string, number>).__bgImageOpacityOverlay ?? 1;
   const bgImageOpacityDimmed = (window as unknown as Record<string, number>).__bgImageOpacityDimmed ?? 1;
+  const passwordHint = (window as unknown as Record<string, string | null>).__passwordHint ?? null;
 
   if (breathingLight) {
     overlay.classList.add("breathing");
@@ -110,6 +130,24 @@ function applySettings(): void {
   } else {
     overlay.classList.remove("has-bg-image");
   }
+
+  // 密码提示
+  const hintEl = document.getElementById("password-hint-display");
+  if (hintEl) {
+    hintEl.textContent = passwordHint || "";
+  }
+
+  // 更新时间戳
+  updateTimestamp();
+}
+
+function updateTimestamp(): void {
+  const el = document.getElementById("lock-timestamp");
+  if (!el) return;
+  const ts = (window as unknown as Record<string, number>).__lockTimestamp;
+  if (ts) {
+    el.textContent = String(ts);
+  }
 }
 
 async function togglePasswordVisibility(): Promise<void> {
@@ -122,8 +160,12 @@ async function togglePasswordVisibility(): Promise<void> {
     container.classList.remove("hidden");
     overlay.classList.remove("dimmed");
     updateBgImageVisibility(true);
+    updateTimestamp();
     const pwdEl = document.getElementById("unlock-password") as HTMLInputElement;
-    if (pwdEl) pwdEl.focus();
+    if (pwdEl) {
+      pwdEl.focus();
+      void invoke("ensure_caps_lock_off");
+    }
     await invoke("set_password_visible", { visible: true });
   } else {
     container.classList.add("hidden");
@@ -147,19 +189,84 @@ async function handleUnlock(): Promise<void> {
     if (valid) {
       showMessage("");
       if (pwdEl) pwdEl.value = "";
-      await invoke("unlock_screen");
+      const welcomeScreen = (window as unknown as Record<string, boolean>).__welcomeScreen ?? false;
+      if (welcomeScreen) {
+        showWelcomeScreen();
+      } else {
+        await invoke("unlock_screen");
+      }
     } else {
       showMessage("密码错误");
       if (pwdEl) pwdEl.value = "";
+      const form = document.querySelector(".lock-form") as HTMLElement | null;
+      if (form) {
+        form.classList.remove("shake");
+        void form.offsetWidth; // 强制回流
+        form.classList.add("shake");
+      }
     }
   } catch (err: unknown) {
     showMessage(`解锁失败: ${err as string}`);
   }
 }
 
+function showWelcomeScreen(): void {
+  const welcomeEl = document.getElementById("welcome-screen");
+  if (!welcomeEl) {
+    void invoke("unlock_screen");
+    return;
+  }
+  welcomeEl.classList.remove("active");
+  void welcomeEl.offsetWidth;
+  welcomeEl.classList.add("active");
+  setTimeout(() => {
+    welcomeEl.classList.remove("active");
+    void invoke("unlock_screen");
+  }, 500);
+}
+
+function setupCapsLockHint(inputId: string, hintId: string): void {
+  const input = document.getElementById(inputId) as HTMLInputElement;
+  const hint = document.getElementById(hintId);
+  if (!input || !hint) return;
+
+  input.addEventListener("focus", () => {
+    void invoke("ensure_caps_lock_off");
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.getModifierState("CapsLock")) {
+      hint.classList.add("visible");
+    } else {
+      hint.classList.remove("visible");
+    }
+  });
+
+  input.addEventListener("keyup", (e) => {
+    if (!e.getModifierState("CapsLock")) {
+      hint.classList.remove("visible");
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    hint.classList.remove("visible");
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   applySettings();
   initLockScreen();
+
+  // 监听时间戳事件
+  void listen<number>("lock-timestamp", (event) => {
+    const ts = event.payload;
+    (window as unknown as Record<string, number>).__lockTimestamp = ts;
+    const el = document.getElementById("lock-timestamp");
+    if (el) el.textContent = String(ts);
+  });
+
+  // 大写锁定提示
+  setupCapsLockHint("unlock-password", "unlock-caps-hint");
 
   const pwdEl = document.getElementById("unlock-password") as HTMLInputElement;
   const unlockBtn = document.getElementById("btn-unlock");
