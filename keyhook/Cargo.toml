@@ -12,3 +12,9 @@ winapi = { version = "0.3", features = [
     "windef",
 ] }
 lazy_static = "1.4"
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

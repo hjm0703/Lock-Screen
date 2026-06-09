@@ -166,6 +166,8 @@ EXE 需命名为 `keyhook.exe`，放在 `src-tauri/resources/` 目录下。打�
 
 ```rust
 struct AppSettings          // 配置数据结构
+  // password_hash, password_hint, auto_hide, breathing_light, bg_mode, bg_image_file,
+  // bg_image_opacity_overlay, bg_image_opacity_dimmed, clock_visible, welcome_screen
 struct AppState             // 应用状态（包含 Mutex<AppSettings> + Mutex<Option<Child>> 钩子进程）
 
 fn get_settings_path()      // 获取 EXE 同级目录 settings.json 路径
@@ -190,7 +192,7 @@ fn get_settings()           // 获取所有配置
 #[tauri::command]
 fn update_setting()         // 更新单个配置项
 #[tauri::command]
-async fn start_lock_screen() // 启动锁屏窗口 + spawn keyhook.exe + 生成时间戳
+async fn start_lock_screen() // 启动锁屏（需先设置密码，异步，获取 Bing 壁纸）
 #[tauri::command]
 fn unlock_screen()          // 解锁：隐藏锁屏窗口 + 终止 keyhook.exe + 恢复输入法
 #[tauri::command]
@@ -205,6 +207,8 @@ fn set_bg_image_file()      // 设置当前使用的背景图片文件名
 fn import_wallpaper()       // 将图片文件写入 EXE/images/ 目录
 #[tauri::command]
 fn ensure_caps_lock_off()   // 强制关闭大写锁定
+#[tauri::command]
+fn set_bg_mode()            // 设置背景模式（none/bing/custom）
 
 fn kill_hook_process()      // 终止 keyhook.exe 进程
 fn cleanup_duplicate_processes() // 启动时清理同名进程和 keyhook.exe
@@ -294,7 +298,7 @@ cargo check
 | `has_password` | 无 | `Result<bool, String>` | 检查是否已设置密码 |
 | `get_settings` | 无 | `Result<AppSettings, String>` | 获取所有配置 |
 | `update_setting` | `key: String, value: f64` | `Result<(), String>` | 更新单个配置项（bool 类型传 1.0/0.0） |
-| `start_lock_screen` | 无 | `Result<(), String>` | 启动锁屏窗口 + 启动 keyhook.exe + 生成时间戳 |
+| `start_lock_screen` | 无 | `Result<(), String>` | 启动锁屏窗口 + 启动 keyhook.exe + 生成时间戳，需先设置密码 |
 | `unlock_screen` | 无 | `Result<(), String>` | 隐藏锁屏窗口 + 终止 keyhook.exe + 恢复输入法 |
 | `set_password_visible` | `visible: bool` | `Result<(), String>` | 通知后端密码框显示/隐藏状态 |
 | `poll_mouse_click` | 无 | `bool` | 轮询鼠标点击标志（前端每 200ms 调用），返回 true 后清除 |
@@ -302,6 +306,7 @@ cargo check
 | `set_bg_image_file` | `filename: Option<String>` | `Result<(), String>` | 设置当前使用的背景图片文件名 |
 | `import_wallpaper` | `file_name: String, bytes: Vec<u8>` | `Result<(), String>` | 将图片文件写入 EXE/images/ 目录 |
 | `ensure_caps_lock_off` | 无 | `()` | 强制关闭大写锁定 |
+| `set_bg_mode` | `mode: String` | `Result<(), String>` | 设置背景模式（none/bing/custom） |
 
 ### 7. 代码风格
 
@@ -346,32 +351,45 @@ cargo check
 锁屏界面（`lock.html` + `lock.css` + `lock.ts`）包含以下元素：
 
 - **时钟显示**：大号时间 + 日期（年月日 + 星期），可开关控制
-- **背景图片**：支持从 `EXE/images/` 目录加载图片或 Bing 每日壁纸，可分别控制显示密码框时和隐藏密码框时的透明度
-- **密码输入框**：毛玻璃效果卡片，深色半透明背景
+- **背景模式** — 三选一：无背景图 / Bing 每日壁纸 / 自定义图片
+- **密码输入框**：Windows 风格，无背板，由外框区分，PIN 图标（上方 3x3 点阵 + 下方单点）
 - **呼吸灯**：底部小圆点呼吸动画，可开关
 - **鼠标点击提示**：点击时显示提示文字
 - **大写锁定提示**：密码输入框下方显示黄色提示文字
-- **时间戳显示**：右下角显示 Unix 时间戳，仅在密码框显示时出现
+- **密码提示**：密码框下方显示自定义提示文字（在通用设置中拟定）
+- **解锁欢迎画面**：密码正确后显示全屏欢迎动画（"欢迎" + 跳动进度条）
+- **密码错误抖动**：密码错误时输入框区域抖动动画
+- **焦点保持**：密码框可见时焦点始终在输入框中
 
-**背景图片 CSS 逻辑**：
-- `.lock-bg-img` 是 `<body>` 的直接子元素，`<img>` 标签
-- `#lock-overlay` 是其兄弟元素，覆盖在图片上方
-- 使用 `body:has(#lock-overlay:not(.dimmed)) .lock-bg-img.show` 选择器根据 overlay 状态切换图片 opacity
-- 有背景图片时 `#lock-overlay` 变为透明；显示密码框时启用 `backdrop-filter: blur(16px)`（仅模糊无黑色遮罩），隐藏密码框时完全透明
-- 壁纸始终显示，不再通过设置项控制显示/隐藏
+**初始状态**：
+- 锁屏时密码框默认隐藏（`.lock-form-section` 带 `hidden` 类）
+- 按 `Esc` 键显示密码框，此时壁纸更透明
+- 再次按 `Esc` 隐藏密码框
+
+**背景模式 CSS 逻辑**：
+- 后端 `internal_start_lock()` 根据 `bg_mode` 决定背景来源
+  - `"none"`：无背景图，纯渐变背景
+  - `"bing"`：从 Bing API 获取每日壁纸 URL
+  - `"custom"`：读取 `bg_image_file` 对应的本地图片文件
+- 壁纸通过 `window.__bgImageUrl` 传递给前端
 
 ### 12. 设置项与重启提示
 
 以下设置修改后需要重启应用才能生效，前端会显示重启提示横幅：
 
 - `breathing_light` — 呼吸灯效果
-- `bg_image_enabled` — 背景图片开关
+- `bg_mode` — 背景模式（none/bing/custom）
 - `bg_image_opacity_overlay` — 显示密码框时图片透明度
 - `bg_image_opacity_dimmed` — 隐藏密码框时图片透明度
 - `clock_visible` — 显示时钟
-- `bing_wallpaper_enabled` — Bing 每日壁纸
+- `welcome_screen` — 解锁欢迎画面
 
 **透明度滑块逻辑**：滑块值越大图片越透明（0% = 完全不透明，100% = 完全透明）。前端保存时将滑块值取反后传给后端（`100 - val`）。
+
+**背景模式逻辑**：`bg_mode` 为字符串枚举，三个值分别对应：
+- `"none"`：无背景图
+- `"bing"`：Bing 每日壁纸
+- `"custom"`：自定义图片
 
 ## 常见任务参考
 

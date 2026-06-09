@@ -171,6 +171,7 @@ async function loadSettings(): Promise<void> {
     const breathingEl = document.getElementById("setting-breathing-light") as HTMLInputElement;
     const clockVisibleEl = document.getElementById("setting-clock-visible") as HTMLInputElement;
     const welcomeScreenEl = document.getElementById("setting-welcome-screen") as HTMLInputElement;
+    const logEnabledEl = document.getElementById("setting-log-enabled") as HTMLInputElement;
     const bgImageOpacityOverlayEl = document.getElementById("setting-bg-image-opacity-overlay") as HTMLInputElement;
     const bgImageOpacityOverlayValEl = document.getElementById("value-bg-image-opacity-overlay");
     const bgImageOpacityDimmedEl = document.getElementById("setting-bg-image-opacity-dimmed") as HTMLInputElement;
@@ -181,6 +182,7 @@ async function loadSettings(): Promise<void> {
     if (breathingEl) breathingEl.checked = Boolean(settings.breathing_light);
     if (clockVisibleEl) clockVisibleEl.checked = Boolean(settings.clock_visible ?? true);
     if (welcomeScreenEl) welcomeScreenEl.checked = Boolean(settings.welcome_screen);
+    if (logEnabledEl) logEnabledEl.checked = Boolean(settings.log_enabled ?? true);
 
     const bgMode = (settings.bg_mode as string) || "none";
     const radioEl = document.querySelector(`input[name="bg-mode"][value="${bgMode}"]`) as HTMLInputElement | null;
@@ -362,6 +364,14 @@ window.addEventListener("DOMContentLoaded", () => {
   if (welcomeScreenEl) {
     welcomeScreenEl.addEventListener("change", (e) => {
       handleToggleSetting("welcome_screen", (e.target as HTMLInputElement).checked);
+    });
+  }
+
+  // 日志文件输出
+  const logEnabledEl = document.getElementById("setting-log-enabled");
+  if (logEnabledEl) {
+    logEnabledEl.addEventListener("change", (e) => {
+      handleToggleSetting("log_enabled", (e.target as HTMLInputElement).checked);
     });
   }
 

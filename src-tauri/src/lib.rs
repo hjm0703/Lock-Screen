@@ -26,6 +26,7 @@ struct AppSettings {
     bg_image_opacity_dimmed: f64,
     clock_visible: bool,
     welcome_screen: bool,
+    log_enabled: bool,
 }
 
 impl Default for AppSettings {
@@ -41,6 +42,7 @@ impl Default for AppSettings {
             bg_image_opacity_dimmed: 1.0,
             clock_visible: true,
             welcome_screen: false,
+            log_enabled: true,
         }
     }
 }
@@ -192,6 +194,10 @@ fn update_setting(key: String, value: f64, state: State<AppState>) -> Result<(),
         "bg_image_opacity_dimmed" => settings.bg_image_opacity_dimmed = value.clamp(0.0, 1.0),
         "clock_visible" => settings.clock_visible = value > 0.5,
         "welcome_screen" => settings.welcome_screen = value > 0.5,
+        "log_enabled" => {
+            settings.log_enabled = value > 0.5;
+            hooks::set_log_enabled(settings.log_enabled);
+        }
         _ => return Err(format!("未知设置项: {}", key)),
     }
     save_settings(&settings)?;
@@ -658,6 +664,7 @@ pub fn run() {
     cleanup_duplicate_processes();
 
     let settings = load_settings();
+    hooks::set_log_enabled(settings.log_enabled);
     let app_state = AppState {
         settings: Mutex::new(settings),
         hook_process: Mutex::new(None),

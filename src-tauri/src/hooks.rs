@@ -26,6 +26,7 @@ static LOCK_STATE: AtomicU8 = AtomicU8::new(0);
 static HOOK_INSTALLED: AtomicU8 = AtomicU8::new(0);
 static MOUSE_CLICKED: AtomicBool = AtomicBool::new(false);
 static HOOK_THREAD_ID: Mutex<Option<u32>> = Mutex::new(None);
+static LOG_ENABLED: AtomicBool = AtomicBool::new(true);
 
 // 异步日志通道，避免在钩子回调中进行文件 I/O（会导致钩子超时）
 static LOG_SENDER: Mutex<Option<Sender<String>>> = Mutex::new(None);
@@ -66,6 +67,9 @@ fn debug_log(msg: &str) {
 }
 
 fn log(msg: &str) {
+    if !LOG_ENABLED.load(Ordering::SeqCst) {
+        return;
+    }
     if let Ok(sender) = LOG_SENDER.try_lock() {
         if let Some(ref tx) = *sender {
             let now = std::time::SystemTime::now()
@@ -76,6 +80,10 @@ fn log(msg: &str) {
             let _ = tx.send(line);
         }
     }
+}
+
+pub fn set_log_enabled(enabled: bool) {
+    LOG_ENABLED.store(enabled, Ordering::SeqCst);
 }
 
 pub fn set_lock_state(state: u8) {
