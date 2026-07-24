@@ -273,6 +273,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (pwdEl) {
     pwdEl.focus();
+    // 禁用输入法（IME），仅允许英文输入
+    pwdEl.addEventListener("compositionstart", (e) => e.preventDefault());
     pwdEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         void handleUnlock();

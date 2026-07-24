@@ -126,17 +126,13 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   background-color: transparent;
   border-radius: 20px;
   min-width: 360px;
-  animation: formSlideUp 0.5s ease;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-.lock-form-section:not(.hidden) {
-  animation: formSlideUp 0.5s ease;
+  transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .lock-form-section.hidden {
   opacity: 0;
-  transform: scale(0.92) translateY(10px);
+  transform: translateY(100px);
   pointer-events: none;
 }
 
@@ -144,17 +140,6 @@ body:has(#lock-overlay.dimmed) .lock-bg-img.show {
   from {
     opacity: 0;
     transform: translateY(-30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes formSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
   }
   to {
     opacity: 1;
